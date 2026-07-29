@@ -1,0 +1,32 @@
+{
+	"manifest_version": 2.0,
+	"id": "vmware_monitoring",
+	"type": "module",
+	"name": "VMware Monitoring",
+	"namespace": "VMwareMonitoring",
+	"version": "1.1.0",
+	"description": "vCenter, hypervisor, virtual machine and datastore overview for the official Zabbix VMware template.",
+	"actions": {
+		"vmware.monitoring.list": {
+			"class": "CControllerVMwareList",
+			"view": "vmware.monitoring.list",
+			"layout": "layout.htmlpage"
+		},
+		"vmware.monitoring.view": {
+			"class": "CControllerVMwareView",
+			"view": "vmware.monitoring.view",
+			"layout": "layout.htmlpage"
+		},
+		"vmware.monitoring.tab": {
+			"class": "CControllerVMwareTab",
+			"layout": "layout.json"
+		},
+		"vmware.monitoring.sparkline": {
+			"class": "CControllerVMwareSparkline",
+			"layout": "layout.json"
+		}
+	},
+	"assets": {
+		"css": ["blue-theme.css", "dark-theme.css"]
+	}
+}

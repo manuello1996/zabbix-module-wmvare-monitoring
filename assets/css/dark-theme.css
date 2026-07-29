@@ -1,0 +1,27 @@
+html[theme="dark-theme"],
+html[theme="hc-dark"] {
+
+	--vmware-monitoring-card-bg: #2b2b2b;
+	--vmware-monitoring-card-border: #3d3d3d;
+	--vmware-monitoring-text: #f2f2f2;
+	--vmware-monitoring-text-muted: #a6a6a6;
+	--vmware-monitoring-running: #3dbb70;
+	--vmware-monitoring-stopped: #ff5c5c;
+	--vmware-monitoring-accent: #4796c6;
+	--vmware-monitoring-strong: #dfe7ee;
+	--vmware-monitoring-primary-fg: #16232e;
+	--vmware-monitoring-surface-muted: #333333;
+	--vmware-monitoring-tint-red: rgba(255, 92, 92, .07);
+	--vmware-monitoring-blue: #6aa9e8;
+	--vmware-monitoring-orange: #f0975a;
+	--vmware-monitoring-crit: #ff6b6b;
+	--vmware-monitoring-progress: #3dbb70;
+	--vmware-monitoring-ok-bg: rgba(61, 187, 112, .12);
+	--vmware-monitoring-ok-bd: rgba(61, 187, 112, .45);
+	--vmware-monitoring-ok-fg: #52d183;
+	--vmware-monitoring-bad-bg: rgba(255, 92, 92, .12);
+	--vmware-monitoring-bad-bd: rgba(255, 92, 92, .45);
+	--vmware-monitoring-bad-fg: #ff7676;
+	--vmware-monitoring-series-1: #199c0d;
+	--vmware-monitoring-series-2: #f63100;
+}
