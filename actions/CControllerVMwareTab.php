@@ -25,7 +25,7 @@ class CControllerVMwareTab extends CController {
 			'tab' => 'required|in '.implode(',', self::TABS),
 			'page' => 'ge 1',
 			'search' => 'string',
-			'sort' => 'in name,total,free,attachments',
+			'sort' => 'in name,cluster,cpu,memory,vms,uptime,version,total,free,attachments',
 			'sortorder' => 'in '.ZBX_SORT_UP.','.ZBX_SORT_DOWN
 		]);
 		if (!$ret) {
@@ -51,8 +51,8 @@ class CControllerVMwareTab extends CController {
 		$data = match ($tab) {
 			'overview' => VMwareCollector::summary($hostid),
 			'hypervisors' => VMwareCollector::hypervisorsPage(
-				$hostid, $page, $rows_per_page, $search
-			) + ['search' => $search],
+				$hostid, $page, $rows_per_page, $search, $sort, $sortorder
+			),
 			'vms' => VMwareCollector::virtualMachinesPage($hostid, $page, $rows_per_page, $search)
 				+ ['search' => $search],
 			'datastores' => VMwareCollector::datastorePages(

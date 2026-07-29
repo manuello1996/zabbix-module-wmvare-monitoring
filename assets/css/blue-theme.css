@@ -1391,6 +1391,29 @@
 	color: var(--vmware-monitoring-text-muted);
 }
 
+.vmware-monitoring-datastore-hypervisors {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	max-width: 360px;
+}
+
+.vmware-monitoring-datastore-hypervisor {
+	display: inline-block;
+	max-width: 170px;
+	padding: 2px 6px;
+	border: 1px solid var(--vmware-monitoring-card-border);
+	border-radius: 3px;
+	background-color: var(--vmware-monitoring-surface-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.vmware-monitoring-datastore-hypervisor-more {
+	color: var(--vmware-monitoring-text-muted);
+}
+
 .vmware-monitoring-refresh-status {
 	margin-left: 8px;
 	font-size: .85em;

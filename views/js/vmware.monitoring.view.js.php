@@ -48,6 +48,16 @@ window.vmware_monitoring = new class {
 
 	bindPanel() {
 		this.panel.addEventListener('click', event => {
+			const cluster = event.target.closest('[data-vmware-monitoring-cluster]');
+			if (cluster) {
+				event.preventDefault();
+				const state = this.getState('hypervisors');
+				state.search = cluster.dataset.vmwareMonitoringCluster || '';
+				state.page = 1;
+				this.activateTab('hypervisors');
+				return;
+			}
+
 			const sort = event.target.closest('[data-vmware-monitoring-sort]');
 			if (sort) {
 				this.sortTab(sort.dataset.vmwareMonitoringSort);

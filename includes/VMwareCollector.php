@@ -122,24 +122,35 @@ class VMwareCollector {
 		return $result;
 	}
 
-	public static function summary(string $vcenter_hostid, bool $include_datastores = true): array {
+	public static function summary(string $vcenter_hostid, bool $include_details = true): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
 		$vcenter = self::itemsByKeys([$vcenter_hostid], self::VCENTER_KEYS)[$vcenter_hostid]
 			?? array_fill_keys(array_values(self::VCENTER_KEYS), null);
-		$attachments = $include_datastores
+		$attachments = $include_details
 			? self::datastores(array_keys($topology['hypervisors']), false)
 			: [];
+		$reported_vms = 0;
+		if ($include_details) {
+			$vm_counts = self::itemsByKeys(array_keys($topology['hypervisors']), [
+				'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count'
+			]);
+			foreach ($vm_counts as $metrics) {
+				$reported_vms += (int) ($metrics['vm_count'] ?? 0);
+			}
+		}
 
 		return [
 			'vcenter_metrics' => $vcenter,
 			'hypervisors_count' => count($topology['hypervisors']),
 			'vms_count' => count($topology['vms']),
+			'reported_vms_count' => $reported_vms,
 			'datastores_count' => count(self::uniqueDatastores($attachments)),
 			'datastore_attachments_count' => count($attachments)
 		];
 	}
 
-	public static function discoveredTopology(string $vcenter_hostid): array {
+	public static function discoveredTopology(string $vcenter_hostid, bool $include_hypervisors = true,
+			bool $include_vms = true): array {
 		$rules = API::DiscoveryRule()->get([
 			'output' => ['itemid', 'key_'],
 			'hostids' => [$vcenter_hostid],
@@ -152,9 +163,12 @@ class VMwareCollector {
 
 		$rule_types = [];
 		foreach ($rules as $rule) {
-			$rule_types[(string) $rule['itemid']] = str_starts_with($rule['key_'], 'vmware.hv.')
+			$type = str_starts_with($rule['key_'], 'vmware.hv.')
 				? 'hypervisors'
 				: 'vms';
+			if (($type === 'hypervisors' && $include_hypervisors) || ($type === 'vms' && $include_vms)) {
+				$rule_types[(string) $rule['itemid']] = $type;
+			}
 		}
 
 		$result = ['hypervisors' => [], 'vms' => []];
@@ -206,17 +220,62 @@ class VMwareCollector {
 	}
 
 	public static function hypervisorsPage(string $vcenter_hostid, int $page, int $per_page,
-			string $search = ''): array {
-		$topology = self::discoveredTopology($vcenter_hostid);
+			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
+		$topology = self::discoveredTopology($vcenter_hostid, true, false);
 		$hypervisors = $topology['hypervisors'];
-		uasort($hypervisors, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
+		$index_keys = [
+			'vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cluster'
+		];
+		foreach (match ($sort) {
+			'cpu' => ['cpu'],
+			'memory' => ['memory_used', 'memory_total'],
+			'vms' => ['vm_count'],
+			'uptime' => ['uptime'],
+			'version' => ['version'],
+			default => []
+		} as $field) {
+			$key = array_search($field, self::HYPERVISOR_KEYS, true);
+			if ($key !== false) {
+				$index_keys[$key] = $field;
+			}
+		}
+		$index_metrics = self::itemsByKeys(array_keys($hypervisors), $index_keys);
 
 		if ($search !== '') {
 			$needle = mb_strtolower($search);
-			$hypervisors = array_filter($hypervisors,
-				static fn(array $host): bool => str_contains(mb_strtolower($host['name']), $needle)
-			);
+			$hypervisors = array_filter($hypervisors, static function (array $host) use (
+					$needle, $index_metrics): bool {
+				$cluster = trim((string) ($index_metrics[$host['hostid']]['cluster'] ?? ''));
+				$cluster = $cluster !== '' ? $cluster : _('Standalone (no cluster)');
+				return str_contains(mb_strtolower($host['name'].' '.$cluster), $needle);
+			});
 		}
+
+		uasort($hypervisors, static function (array $left, array $right) use (
+				$sort, $sortorder, $index_metrics): int {
+			$left_value = self::hypervisorSortValue($left, $index_metrics[$left['hostid']] ?? [], $sort);
+			$right_value = self::hypervisorSortValue($right, $index_metrics[$right['hostid']] ?? [], $sort);
+
+			if ($left_value === null || $right_value === null) {
+				if ($left_value === $right_value) {
+					$comparison = 0;
+				}
+				else {
+					return $left_value === null ? 1 : -1;
+				}
+			}
+			elseif (is_float($left_value) || is_int($left_value)) {
+				$comparison = $left_value <=> $right_value;
+			}
+			else {
+				$comparison = strnatcasecmp((string) $left_value, (string) $right_value);
+			}
+
+			if ($comparison === 0) {
+				$comparison = strnatcasecmp($left['name'], $right['name']);
+			}
+			return $sortorder === ZBX_SORT_DOWN ? -$comparison : $comparison;
+		});
 
 		$paged = self::paginateArray($hypervisors, $page, $per_page);
 		$metrics = self::itemsByKeys(array_keys($paged['rows']), self::HYPERVISOR_KEYS);
@@ -230,12 +289,15 @@ class VMwareCollector {
 		unset($host);
 
 		$paged['rows'] = array_values($paged['rows']);
+		$paged['search'] = $search;
+		$paged['sort'] = $sort;
+		$paged['sortorder'] = $sortorder;
 		return $paged;
 	}
 
 	public static function virtualMachinesPage(string $vcenter_hostid, int $page, int $per_page,
 			string $search = ''): array {
-		$topology = self::discoveredTopology($vcenter_hostid);
+		$topology = self::discoveredTopology($vcenter_hostid, false, true);
 		$vms = $topology['vms'];
 		uasort($vms, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
 
@@ -261,7 +323,7 @@ class VMwareCollector {
 
 	public static function datastorePages(string $vcenter_hostid, int $page, int $per_page,
 			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
-		$topology = self::discoveredTopology($vcenter_hostid);
+		$topology = self::discoveredTopology($vcenter_hostid, true, false);
 		$host_names = array_column($topology['hypervisors'], 'name', 'hostid');
 		$attachments = self::datastores(array_keys($topology['hypervisors']), true);
 
@@ -301,14 +363,11 @@ class VMwareCollector {
 	}
 
 	public static function clusters(string $vcenter_hostid): array {
-		$topology = self::discoveredTopology($vcenter_hostid);
+		$topology = self::discoveredTopology($vcenter_hostid, true, false);
 		$hv_metrics = self::itemsByKeys(array_keys($topology['hypervisors']), [
 			'vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cluster',
 			'vmware.hv.hw.memory[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_total',
 			'vmware.hv.memory.used[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_used'
-		]);
-		$vm_metrics = self::itemsByKeys(array_keys($topology['vms']), [
-			'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster'
 		]);
 		$status_items = API::Item()->get([
 			'output' => ['name', 'lastvalue', 'lastclock'],
@@ -326,7 +385,7 @@ class VMwareCollector {
 			if ($name !== '') {
 				$result[$name] = [
 					'name' => $name, 'status' => self::hasRecentValue($item) ? $item['lastvalue'] : null,
-					'hypervisors' => 0, 'vms' => 0, 'memory_total' => 0.0, 'memory_used' => 0.0
+					'hypervisors' => 0, 'memory_total' => 0.0, 'memory_used' => 0.0
 				];
 			}
 		}
@@ -336,23 +395,13 @@ class VMwareCollector {
 			$name = trim((string) ($m['cluster'] ?? ''));
 			$name = $name !== '' ? $name : _('Standalone (no cluster)');
 			$result[$name] ??= [
-				'name' => $name, 'status' => null, 'hypervisors' => 0, 'vms' => 0,
+				'name' => $name, 'status' => null, 'hypervisors' => 0,
 				'memory_total' => 0.0, 'memory_used' => 0.0
 			];
 			$result[$name]['hypervisors']++;
 			$result[$name]['memory_total'] += (float) ($m['memory_total'] ?? 0);
 			$result[$name]['memory_used'] += (float) ($m['memory_used'] ?? 0);
 		}
-		foreach ($topology['vms'] as $hostid => $host) {
-			$name = trim((string) ($vm_metrics[$hostid]['cluster'] ?? ''));
-			$name = $name !== '' ? $name : _('Standalone (no cluster)');
-			$result[$name] ??= [
-				'name' => $name, 'status' => null, 'hypervisors' => 0, 'vms' => 0,
-				'memory_total' => 0.0, 'memory_used' => 0.0
-			];
-			$result[$name]['vms']++;
-		}
-
 		uksort($result, 'strnatcasecmp');
 		return array_values($result);
 	}
@@ -545,6 +594,22 @@ class VMwareCollector {
 		return preg_match('/^vmware\.hv\.datastore\.[^\[]+\[[^,]+,[^,]+,([^,\]]+)/', $key, $matches) === 1
 			? trim($matches[1], " \t\n\r\0\x0B\"")
 			: '';
+	}
+
+	private static function hypervisorSortValue(array $host, array $metrics, string $sort) {
+		return match ($sort) {
+			'cluster' => ($cluster = trim((string) ($metrics['cluster'] ?? ''))) !== ''
+				? $cluster
+				: _('Standalone (no cluster)'),
+			'cpu' => $metrics['cpu'] !== null ? (float) $metrics['cpu'] : null,
+			'memory' => (float) ($metrics['memory_total'] ?? 0) > 0
+				? (float) $metrics['memory_used'] / (float) $metrics['memory_total']
+				: null,
+			'vms' => $metrics['vm_count'] !== null ? (float) $metrics['vm_count'] : null,
+			'uptime' => $metrics['uptime'] !== null ? (float) $metrics['uptime'] : null,
+			'version' => ($metrics['version'] ?? '') !== '' ? (string) $metrics['version'] : null,
+			default => $host['name']
+		};
 	}
 
 	private static function sortDatastoreRows(array &$rows, string $sort, string $sortorder): void {

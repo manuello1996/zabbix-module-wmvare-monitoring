@@ -122,6 +122,7 @@ class CControllerVMwareView extends CController {
 			'vcenter_metrics' => array_fill_keys(array_values(VMwareCollector::VCENTER_KEYS), null),
 			'hypervisors_count' => 0,
 			'vms_count' => 0,
+			'reported_vms_count' => 0,
 			'datastores_count' => 0,
 			'datastore_attachments_count' => 0
 		];

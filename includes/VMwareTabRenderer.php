@@ -4,6 +4,7 @@ namespace Modules\VMwareMonitoring\Includes;
 
 use CDiv;
 use CLink;
+use CLinkAction;
 use CSpan;
 use CTableInfo;
 use CTag;
@@ -39,7 +40,8 @@ class VMwareTabRenderer {
 				->addClass('vmware-monitoring-state-'.$health['kind'])
 		]);
 		$table->addRow([_('Hypervisors'), (string) $data['hypervisors_count']]);
-		$table->addRow([_('Virtual machines'), (string) $data['vms_count']]);
+		$table->addRow([_('Virtual machines'), (string) $data['reported_vms_count']]);
+		$table->addRow([_('Discovered virtual machines'), (string) $data['vms_count']]);
 		$table->addRow([_('Unique datastores'), (string) $data['datastores_count']]);
 		$table->addRow([_('Datastore attachments'), (string) $data['datastore_attachments_count']]);
 		return self::section(_('vCenter overview'), [$table]);
@@ -48,8 +50,16 @@ class VMwareTabRenderer {
 	private static function hypervisors(array $data): CDiv {
 		$table = (new CTableInfo())
 			->setHeader([
-				_('Hypervisor'), _('Datacenter / cluster'), _('Connection'), _('Health'), _('Problems'),
-				_('CPU (24h)'), _('Memory'), _('VMs'), _('Uptime'), _('Version')
+				self::sortHeader(_('Hypervisor'), 'name', $data),
+				self::sortHeader(_('Datacenter / cluster'), 'cluster', $data),
+				_('Connection'),
+				_('Health'),
+				_('Problems'),
+				self::sortHeader(_('CPU (24h)'), 'cpu', $data),
+				self::sortHeader(_('Memory'), 'memory', $data),
+				self::sortHeader(_('VMs'), 'vms', $data),
+				self::sortHeader(_('Uptime'), 'uptime', $data),
+				self::sortHeader(_('Version'), 'version', $data)
 			])
 			->setNoDataMessage(_('No hypervisors discovered yet.'));
 
@@ -60,14 +70,10 @@ class VMwareTabRenderer {
 			$memory_pct = (float) $m['memory_total'] > 0
 				? ((float) $m['memory_used'] / (float) $m['memory_total']) * 100
 				: null;
-			$url = (new CUrl('zabbix.php'))
-				->setArgument('action', 'latest.view')
-				->setArgument('hostids', [$hypervisor['hostid']])
-				->setArgument('filter_set', 1);
 			$cluster = trim((string) $m['cluster']);
 
 			$table->addRow([
-				(new CLink($hypervisor['name'], $url))->addClass('vmware-monitoring-name'),
+				self::hostActionLink($hypervisor['name'], $hypervisor['hostid']),
 				(new CDiv([
 					(new CSpan($m['datacenter'] ?: '-'))->addClass('vmware-monitoring-muted'),
 					new CSpan($cluster !== '' ? $cluster : _('Standalone (no cluster)'))
@@ -88,7 +94,7 @@ class VMwareTabRenderer {
 			]);
 		}
 		return self::section(_('Discovered hypervisors'), [
-			self::search(_('Filter hypervisors...'), $data['search'] ?? ''),
+			self::search(_('Filter by hypervisor or cluster...'), $data['search'] ?? ''),
 			$table,
 			self::pager($data)
 		]);
@@ -106,10 +112,6 @@ class VMwareTabRenderer {
 			$m = $vm['metrics'];
 			$power = VMwareFormatter::vmPowerState($m['power']);
 			$state = VMwareFormatter::vmState($m['state']);
-			$url = (new CUrl('zabbix.php'))
-				->setArgument('action', 'latest.view')
-				->setArgument('hostids', [$vm['hostid']])
-				->setArgument('filter_set', 1);
 			$cluster = trim((string) $m['cluster']);
 			$placement = (new CSpan(
 				($m['datacenter'] ?: '-').' / '.
@@ -117,7 +119,7 @@ class VMwareTabRenderer {
 			))->addClass('vmware-monitoring-muted');
 
 			$table->addRow([
-				(new CLink($vm['name'], $url))->addClass('vmware-monitoring-name'),
+				self::hostActionLink($vm['name'], $vm['hostid']),
 				(new CDiv([
 					new CSpan($m['hypervisor'] ?: '-'),
 					$placement
@@ -165,7 +167,7 @@ class VMwareTabRenderer {
 				$row['uuid'] ?: '-',
 				VMwareFormatter::bytes($row['total']),
 				VMwareFormatter::percent($row['free_pct']),
-				$row['hypervisors'] ? implode(', ', $row['hypervisors']) : '-',
+				self::hypervisorList($row['hypervisors']),
 				(string) $row['attachments']
 			]);
 		}
@@ -209,7 +211,7 @@ class VMwareTabRenderer {
 	private static function clusters(array $rows): CDiv {
 		$table = (new CTableInfo())
 			->setHeader([
-				_('Cluster'), _('Status'), _('Hypervisors'), _('Virtual machines'), _('Memory used'), _('Capacity')
+				_('Cluster'), _('Status'), _('Hypervisors'), _('Memory used'), _('Capacity')
 			])
 			->setNoDataMessage(_('No clusters or standalone hypervisors discovered.'));
 		foreach ($rows as $row) {
@@ -218,10 +220,11 @@ class VMwareTabRenderer {
 					'kind' => 'unknown']
 				: VMwareFormatter::hypervisorHealth($row['status']);
 			$table->addRow([
-				(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
+				(new CLink($row['name'], '#'))
+					->addClass('vmware-monitoring-name')
+					->setAttribute('data-vmware-monitoring-cluster', $row['name']),
 				self::state($status),
 				(string) $row['hypervisors'],
-				(string) $row['vms'],
 				VMwareFormatter::bytes($row['memory_used']),
 				VMwareFormatter::bytes($row['memory_total'])
 			]);
@@ -259,6 +262,55 @@ class VMwareTabRenderer {
 		return (new CSpan($state['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$state['kind']);
+	}
+
+	private static function hostActionLink(string $name, string $hostid): CLinkAction {
+		$latest_data = (new CUrl('zabbix.php'))
+			->setArgument('action', 'latest.view')
+			->setArgument('hostids', [$hostid])
+			->setArgument('filter_set', 1)
+			->getUrl();
+		$dashboard = (new CUrl('zabbix.php'))
+			->setArgument('action', 'host.dashboard.view')
+			->setArgument('hostid', $hostid)
+			->getUrl();
+
+		return (new CLinkAction($name))
+			->addClass('vmware-monitoring-name')
+			->setMenuPopup([
+				'type' => 'submenu',
+				'data' => [
+					'submenu' => [
+						'view' => [
+							'label' => _('View'),
+							'items' => [
+								$latest_data => _('Latest data'),
+								$dashboard => _('Host dashboard')
+							]
+						]
+					]
+				]
+			]);
+	}
+
+	private static function hypervisorList(array $hypervisors) {
+		if (!$hypervisors) {
+			return '-';
+		}
+
+		$items = [];
+		foreach (array_slice($hypervisors, 0, 3) as $hypervisor) {
+			$items[] = (new CSpan($hypervisor))->addClass('vmware-monitoring-datastore-hypervisor');
+		}
+		if (count($hypervisors) > 3) {
+			$items[] = (new CSpan(sprintf(_('+%1$d more'), count($hypervisors) - 3)))
+				->addClass('vmware-monitoring-datastore-hypervisor')
+				->addClass('vmware-monitoring-datastore-hypervisor-more');
+		}
+
+		return (new CDiv($items))
+			->addClass('vmware-monitoring-datastore-hypervisors')
+			->setTitle(implode(', ', $hypervisors));
 	}
 
 	private static function sparkline(?string $itemid): CDiv {
