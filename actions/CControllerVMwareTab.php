@@ -24,7 +24,9 @@ class CControllerVMwareTab extends CController {
 			'hostid' => 'required|db hosts.hostid',
 			'tab' => 'required|in '.implode(',', self::TABS),
 			'page' => 'ge 1',
-			'search' => 'string'
+			'search' => 'string',
+			'sort' => 'in name,total,free,attachments',
+			'sortorder' => 'in '.ZBX_SORT_UP.','.ZBX_SORT_DOWN
 		]);
 		if (!$ret) {
 			$this->setResponse(new CControllerResponseFatal());
@@ -42,15 +44,19 @@ class CControllerVMwareTab extends CController {
 		$tab = (string) $this->getInput('tab');
 		$page = (int) $this->getInput('page', 1);
 		$search = trim((string) $this->getInput('search', ''));
+		$sort = (string) $this->getInput('sort', 'name');
+		$sortorder = (string) $this->getInput('sortorder', ZBX_SORT_UP);
 		$rows_per_page = max(1, (int) (CWebUser::$data['rows_per_page'] ?? 25));
 
 		$data = match ($tab) {
 			'overview' => VMwareCollector::summary($hostid),
-			'hypervisors' => VMwareCollector::hypervisors($hostid),
+			'hypervisors' => VMwareCollector::hypervisorsPage(
+				$hostid, $page, $rows_per_page, $search
+			) + ['search' => $search],
 			'vms' => VMwareCollector::virtualMachinesPage($hostid, $page, $rows_per_page, $search)
 				+ ['search' => $search],
 			'datastores' => VMwareCollector::datastorePages(
-				$hostid, $page, $rows_per_page, $search
+				$hostid, $page, $rows_per_page, $search, $sort, $sortorder
 			),
 			'clusters' => VMwareCollector::clusters($hostid),
 			'alarms' => VMwareCollector::alarms($hostid)

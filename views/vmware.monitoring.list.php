@@ -32,7 +32,7 @@ $problemBadge = static function (array $severities, string $hostid) {
 		(new CDiv($content))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST),
 		(new CUrl('zabbix.php'))
 			->setArgument('action', 'problem.view')
-			->setArgument('filter_hostids', [$hostid])
+			->setArgument('hostids', [$hostid])
 			->setArgument('filter_set', 1)
 	))->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
 };

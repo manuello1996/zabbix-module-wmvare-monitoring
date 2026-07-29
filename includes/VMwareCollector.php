@@ -4,6 +4,7 @@ namespace Modules\VMwareMonitoring\Includes;
 
 use API;
 use CSettingsHelper;
+use DB;
 use Manager;
 
 class VMwareCollector {
@@ -121,11 +122,13 @@ class VMwareCollector {
 		return $result;
 	}
 
-	public static function summary(string $vcenter_hostid): array {
+	public static function summary(string $vcenter_hostid, bool $include_datastores = true): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
 		$vcenter = self::itemsByKeys([$vcenter_hostid], self::VCENTER_KEYS)[$vcenter_hostid]
 			?? array_fill_keys(array_values(self::VCENTER_KEYS), null);
-		$attachments = self::datastores(array_keys($topology['hypervisors']), false);
+		$attachments = $include_datastores
+			? self::datastores(array_keys($topology['hypervisors']), false)
+			: [];
 
 		return [
 			'vcenter_metrics' => $vcenter,
@@ -159,52 +162,75 @@ class VMwareCollector {
 			return $result;
 		}
 
+		$prototypes = DB::select('host_discovery', [
+			'output' => ['hostid', 'parent_itemid'],
+			'filter' => ['parent_itemid' => array_keys($rule_types)]
+		]);
+		$prototype_types = [];
+		foreach ($prototypes as $prototype) {
+			$ruleid = (string) $prototype['parent_itemid'];
+			$prototype_types[(string) $prototype['hostid']] = $rule_types[$ruleid];
+		}
+		if (!$prototype_types) {
+			return $result;
+		}
+
+		$discovered = DB::select('host_discovery', [
+			'output' => ['hostid', 'parent_hostid'],
+			'filter' => ['parent_hostid' => array_keys($prototype_types)]
+		]);
+		$host_types = [];
+		foreach ($discovered as $host) {
+			$prototypeid = (string) $host['parent_hostid'];
+			$host_types[(string) $host['hostid']] = $prototype_types[$prototypeid];
+		}
+		if (!$host_types) {
+			return $result;
+		}
+
 		$hosts = API::Host()->get([
 			'output' => ['hostid', 'host', 'name', 'status'],
-			'selectDiscoveryRule' => ['itemid'],
-			'selectInterfaces' => ['interfaceid', 'type', 'available', 'useip', 'ip', 'dns', 'port', 'error',
-				'details'
-			],
-			'selectInventory' => ['notes'],
+			'hostids' => array_keys($host_types),
 			'preservekeys' => true
 		]) ?: [];
 
 		foreach ($hosts as $hostid => $host) {
-			$ruleid = (string) ($host['discoveryRule']['itemid'] ?? '');
-			if (!isset($rule_types[$ruleid])) {
+			if (!isset($host_types[$hostid])) {
 				continue;
 			}
 
-			$host += ['interfaces' => [], 'inventory' => []];
-			foreach ($host['interfaces'] as &$interface) {
-				$interface['interface'] = getHostInterface($interface);
-				$interface['description'] = '';
-				$interface['has_enabled_items'] = true;
-			}
-			unset($interface);
-
-			$result[$rule_types[$ruleid]][$hostid] = $host;
+			$result[$host_types[$hostid]][$hostid] = $host;
 		}
 
 		return $result;
 	}
 
-	public static function hypervisors(string $vcenter_hostid): array {
+	public static function hypervisorsPage(string $vcenter_hostid, int $page, int $per_page,
+			string $search = ''): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
-		$metrics = self::itemsByKeys(array_keys($topology['hypervisors']), self::HYPERVISOR_KEYS);
-		$problems = self::problemsByHosts(array_keys($topology['hypervisors']));
+		$hypervisors = $topology['hypervisors'];
+		uasort($hypervisors, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
 
-		foreach ($topology['hypervisors'] as $hostid => &$host) {
+		if ($search !== '') {
+			$needle = mb_strtolower($search);
+			$hypervisors = array_filter($hypervisors,
+				static fn(array $host): bool => str_contains(mb_strtolower($host['name']), $needle)
+			);
+		}
+
+		$paged = self::paginateArray($hypervisors, $page, $per_page);
+		$metrics = self::itemsByKeys(array_keys($paged['rows']), self::HYPERVISOR_KEYS);
+		$problems = self::problemsByHosts(array_keys($paged['rows']));
+
+		foreach ($paged['rows'] as $hostid => &$host) {
 			$host['metrics'] = $metrics[$hostid]
 				?? array_fill_keys(array_values(self::HYPERVISOR_KEYS), null);
 			$host['problems'] = $problems[$hostid] ?? [];
 		}
 		unset($host);
 
-		uasort($topology['hypervisors'],
-			static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name'])
-		);
-		return array_values($topology['hypervisors']);
+		$paged['rows'] = array_values($paged['rows']);
+		return $paged;
 	}
 
 	public static function virtualMachinesPage(string $vcenter_hostid, int $page, int $per_page,
@@ -234,7 +260,7 @@ class VMwareCollector {
 	}
 
 	public static function datastorePages(string $vcenter_hostid, int $page, int $per_page,
-			string $search = ''): array {
+			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
 		$host_names = array_column($topology['hypervisors'], 'name', 'hostid');
 		$attachments = self::datastores(array_keys($topology['hypervisors']), true);
@@ -257,6 +283,9 @@ class VMwareCollector {
 			});
 		}
 
+		self::sortDatastoreRows($unique, $sort, $sortorder);
+		self::sortDatastoreRows($attachments, $sort === 'attachments' ? 'name' : $sort, $sortorder);
+
 		$unique_page = self::paginateArray($unique, $page, $per_page);
 		$unique_page['rows'] = array_values($unique_page['rows']);
 		$attachment_page = self::paginateArray($attachments, $page, $per_page);
@@ -264,6 +293,8 @@ class VMwareCollector {
 
 		return [
 			'search' => $search,
+			'sort' => $sort,
+			'sortorder' => $sortorder,
 			'unique' => $unique_page,
 			'attachments' => $attachment_page
 		];
@@ -393,7 +424,9 @@ class VMwareCollector {
 			'output' => ['hostid', 'itemid', 'name', 'key_', 'lastvalue', 'lastclock'],
 			'selectTags' => ['tag', 'value'],
 			'hostids' => $hypervisor_hostids,
-			'search' => ['key_' => 'vmware.hv.datastore.'],
+			'search' => [
+				'key_' => $with_metrics ? 'vmware.hv.datastore.' : 'vmware.hv.datastore.size['
+			],
 			'startSearch' => true,
 			'monitored' => true
 		]) ?: [];
@@ -512,6 +545,37 @@ class VMwareCollector {
 		return preg_match('/^vmware\.hv\.datastore\.[^\[]+\[[^,]+,[^,]+,([^,\]]+)/', $key, $matches) === 1
 			? trim($matches[1], " \t\n\r\0\x0B\"")
 			: '';
+	}
+
+	private static function sortDatastoreRows(array &$rows, string $sort, string $sortorder): void {
+		$field = $sort === 'free' ? 'free_pct' : $sort;
+		$numeric = in_array($field, ['total', 'free_pct', 'attachments'], true);
+
+		uasort($rows, static function (array $left, array $right) use ($field, $numeric, $sortorder): int {
+			$left_value = $left[$field] ?? null;
+			$right_value = $right[$field] ?? null;
+
+			if ($left_value === null || $right_value === null) {
+				if ($left_value === $right_value) {
+					$comparison = 0;
+				}
+				else {
+					return $left_value === null ? 1 : -1;
+				}
+			}
+			elseif ($numeric) {
+				$comparison = (float) $left_value <=> (float) $right_value;
+			}
+			else {
+				$comparison = strnatcasecmp((string) $left_value, (string) $right_value);
+			}
+
+			if ($comparison === 0) {
+				$comparison = strnatcasecmp((string) $left['name'], (string) $right['name']);
+			}
+
+			return $sortorder === ZBX_SORT_DOWN ? -$comparison : $comparison;
+		});
 	}
 
 	private static function paginateArray(array $rows, int $page, int $per_page): array {

@@ -45,7 +45,7 @@ class VMwareTabRenderer {
 		return self::section(_('vCenter overview'), [$table]);
 	}
 
-	private static function hypervisors(array $rows): CDiv {
+	private static function hypervisors(array $data): CDiv {
 		$table = (new CTableInfo())
 			->setHeader([
 				_('Hypervisor'), _('Datacenter / cluster'), _('Connection'), _('Health'), _('Problems'),
@@ -53,7 +53,7 @@ class VMwareTabRenderer {
 			])
 			->setNoDataMessage(_('No hypervisors discovered yet.'));
 
-		foreach ($rows as $hypervisor) {
+		foreach ($data['rows'] as $hypervisor) {
 			$m = $hypervisor['metrics'];
 			$connection = VMwareFormatter::connectionState($m['connection']);
 			$health = VMwareFormatter::hypervisorHealth($m['health']);
@@ -87,7 +87,11 @@ class VMwareTabRenderer {
 				$m['version'] ?: '-'
 			]);
 		}
-		return self::section(_('Discovered hypervisors'), [$table]);
+		return self::section(_('Discovered hypervisors'), [
+			self::search(_('Filter hypervisors...'), $data['search'] ?? ''),
+			$table,
+			self::pager($data)
+		]);
 	}
 
 	private static function vms(array $data): CDiv {
@@ -145,7 +149,13 @@ class VMwareTabRenderer {
 	private static function datastores(array $data): CDiv {
 		$unique_table = (new CTableInfo())
 			->setHeader([
-				_('Datastore'), _('Type'), _('UUID'), _('Capacity'), _('Free'), _('Hypervisors'), _('Attachments')
+				self::sortHeader(_('Datastore'), 'name', $data),
+				_('Type'),
+				_('UUID'),
+				self::sortHeader(_('Capacity'), 'total', $data),
+				self::sortHeader(_('Free'), 'free', $data),
+				_('Hypervisors'),
+				self::sortHeader(_('Attachments'), 'attachments', $data)
 			])
 			->setNoDataMessage(_('No datastores discovered yet.'));
 		foreach ($data['unique']['rows'] as $row) {
@@ -162,7 +172,11 @@ class VMwareTabRenderer {
 
 		$attachment_table = (new CTableInfo())
 			->setHeader([
-				_('Datastore'), _('Hypervisor'), _('Type'), _('Capacity'), _('Free'),
+				self::sortHeader(_('Datastore'), 'name', $data),
+				_('Hypervisor'),
+				_('Type'),
+				self::sortHeader(_('Capacity'), 'total', $data),
+				self::sortHeader(_('Free'), 'free', $data),
 				_('Read / write latency'), _('Read / write IOPS'), _('Multipaths')
 			])
 			->setNoDataMessage(_('No datastore attachments found.'));
@@ -270,7 +284,7 @@ class VMwareTabRenderer {
 			(new CDiv($items))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST),
 			(new CUrl('zabbix.php'))
 				->setArgument('action', 'problem.view')
-				->setArgument('filter_hostids', [$hostid])
+				->setArgument('hostids', [$hostid])
 				->setArgument('filter_set', 1)
 		))->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
 	}
@@ -282,6 +296,27 @@ class VMwareTabRenderer {
 			->setAttribute('placeholder', $placeholder)
 			->setAttribute('data-vmware-monitoring-server-search', '1')
 			->addClass('vmware-monitoring-search');
+	}
+
+	private static function sortHeader(string $label, string $field, array $data): CSpan {
+		$active = ($data['sort'] ?? 'name') === $field;
+		$arrow = new CSpan();
+		if ($active) {
+			$arrow->addItem(
+				(new CSpan())->addClass(
+					($data['sortorder'] ?? ZBX_SORT_UP) === ZBX_SORT_UP ? 'arrow-up' : 'arrow-down'
+				)
+			);
+		}
+
+		return (new CSpan([
+			$label,
+			$arrow->addClass('vmware-monitoring-sort-arrow')
+		]))
+			->addClass('vmware-monitoring-sort')
+			->setAttribute('data-vmware-monitoring-sort', $field)
+			->setAttribute('role', 'button')
+			->setAttribute('tabindex', '0');
 	}
 
 	private static function pager(array $data): CDiv {
