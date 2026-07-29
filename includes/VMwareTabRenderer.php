@@ -299,13 +299,34 @@ class VMwareTabRenderer {
 		}
 
 		$items = [];
-		foreach (array_slice($hypervisors, 0, 3) as $hypervisor) {
+		foreach (array_slice($hypervisors, 0, 3, true) as $hypervisor) {
 			$items[] = (new CSpan($hypervisor))->addClass('vmware-monitoring-datastore-hypervisor');
 		}
 		if (count($hypervisors) > 3) {
-			$items[] = (new CSpan(sprintf(_('+%1$d more'), count($hypervisors) - 3)))
+			$popup_items = [];
+			foreach (array_slice($hypervisors, 3, null, true) as $hostid => $hypervisor) {
+				$url = (new CUrl('zabbix.php'))
+					->setArgument('action', 'latest.view')
+					->setArgument('hostids', [(string) $hostid])
+					->setArgument('filter_set', 1)
+					->getUrl();
+				$popup_items[$url] = $hypervisor;
+			}
+
+			$items[] = (new CLinkAction(sprintf(_('+%1$d more'), count($hypervisors) - 3)))
 				->addClass('vmware-monitoring-datastore-hypervisor')
-				->addClass('vmware-monitoring-datastore-hypervisor-more');
+				->addClass('vmware-monitoring-datastore-hypervisor-more')
+				->setMenuPopup([
+					'type' => 'submenu',
+					'data' => [
+						'submenu' => [
+							'hypervisors' => [
+								'label' => _('Attached hypervisors'),
+								'items' => $popup_items
+							]
+						]
+					]
+				]);
 		}
 
 		return (new CDiv($items))

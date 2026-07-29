@@ -127,7 +127,8 @@ $page->addItem(
 $page->addItem(
 	(new CDiv([
 		$makeStat('nodes', _('Hypervisors'), $data['hypervisors_count']),
-		$makeStat('total', _('Virtual machines'), $data['vms_count'])
+		$makeStat('total', _('Discovered VMs'), $data['vms_count']),
+		$makeStat('total', _('Total VMs'), $data['reported_vms_count'])
 	]))->addClass('vmware-monitoring-statstrip')
 );
 
@@ -135,7 +136,7 @@ $tabs = [];
 foreach ([
 	['overview', _('Overview')],
 	['hypervisors', _('Hypervisors')],
-	['vms', _('Virtual machines')],
+	['vms', _('Discovered VMs')],
 	['datastores', _('Datastores')],
 	['clusters', _('Clusters')],
 	['alarms', _('Alarms')]

@@ -114,7 +114,7 @@ class VMwareCollector {
 			$topology = self::discoveredTopology($hostid);
 			$attachments = self::datastores(array_keys($topology['hypervisors']), false);
 			$result[$hostid]['hypervisors'] = count($topology['hypervisors']);
-			$result[$hostid]['vms'] = count($topology['vms']);
+			$result[$hostid]['vms'] = self::reportedVmCount(array_keys($topology['hypervisors']));
 			$result[$hostid]['datastores'] = count(self::uniqueDatastores($attachments));
 			$result[$hostid]['datastore_attachments'] = count($attachments);
 		}
@@ -122,22 +122,14 @@ class VMwareCollector {
 		return $result;
 	}
 
-	public static function summary(string $vcenter_hostid, bool $include_details = true): array {
+	public static function summary(string $vcenter_hostid, bool $include_datastores = true): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
 		$vcenter = self::itemsByKeys([$vcenter_hostid], self::VCENTER_KEYS)[$vcenter_hostid]
 			?? array_fill_keys(array_values(self::VCENTER_KEYS), null);
-		$attachments = $include_details
+		$attachments = $include_datastores
 			? self::datastores(array_keys($topology['hypervisors']), false)
 			: [];
-		$reported_vms = 0;
-		if ($include_details) {
-			$vm_counts = self::itemsByKeys(array_keys($topology['hypervisors']), [
-				'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count'
-			]);
-			foreach ($vm_counts as $metrics) {
-				$reported_vms += (int) ($metrics['vm_count'] ?? 0);
-			}
-		}
+		$reported_vms = self::reportedVmCount(array_keys($topology['hypervisors']));
 
 		return [
 			'vcenter_metrics' => $vcenter,
@@ -572,14 +564,13 @@ class VMwareCollector {
 
 			$hypervisor = trim((string) ($attachment['hypervisor'] ?? ''));
 			if ($hypervisor !== '') {
-				$result[$identity]['hypervisors'][$hypervisor] = $hypervisor;
+				$result[$identity]['hypervisors'][(string) $attachment['hostid']] = $hypervisor;
 			}
 			$result[$identity]['attachments']++;
 		}
 
 		foreach ($result as &$datastore) {
 			natcasesort($datastore['hypervisors']);
-			$datastore['hypervisors'] = array_values($datastore['hypervisors']);
 		}
 		unset($datastore);
 		uasort($result, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
@@ -610,6 +601,17 @@ class VMwareCollector {
 			'version' => ($metrics['version'] ?? '') !== '' ? (string) $metrics['version'] : null,
 			default => $host['name']
 		};
+	}
+
+	private static function reportedVmCount(array $hypervisor_hostids): int {
+		$total = 0;
+		$vm_counts = self::itemsByKeys($hypervisor_hostids, [
+			'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count'
+		]);
+		foreach ($vm_counts as $metrics) {
+			$total += (int) ($metrics['vm_count'] ?? 0);
+		}
+		return $total;
 	}
 
 	private static function sortDatastoreRows(array &$rows, string $sort, string $sortorder): void {
