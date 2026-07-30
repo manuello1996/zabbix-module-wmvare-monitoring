@@ -74,9 +74,6 @@ class CControllerVMwareList extends CController {
 		if ($vcenter_hostids) {
 			$hosts = API::Host()->get([
 				'output' => ['hostid', 'name', 'status'],
-				'selectInterfaces' => ['interfaceid', 'type', 'available', 'useip', 'ip', 'dns', 'port', 'error',
-					'details'
-				],
 				'selectInventory' => ['notes'],
 				'hostids' => $vcenter_hostids,
 				'preservekeys' => true,
@@ -97,13 +94,7 @@ class CControllerVMwareList extends CController {
 		}
 
 		foreach ($hosts as &$host) {
-			$host += ['interfaces' => [], 'inventory' => []];
-			foreach ($host['interfaces'] as &$interface) {
-				$interface['interface'] = getHostInterface($interface);
-				$interface['description'] = '';
-				$interface['has_enabled_items'] = true;
-			}
-			unset($interface);
+			$host += ['inventory' => []];
 		}
 		unset($host);
 

@@ -303,10 +303,17 @@ class VMwareCollector {
 		$paged = self::paginateArray($vms, $page, $per_page);
 		$metrics = self::itemsByKeys(array_keys($paged['rows']), self::VM_KEYS);
 		$problems = self::problemsByHosts(array_keys($paged['rows']));
+		$inventory = API::Host()->get([
+			'output' => ['hostid'],
+			'selectInventory' => ['notes'],
+			'hostids' => array_keys($paged['rows']),
+			'preservekeys' => true
+		]) ?: [];
 
 		foreach ($paged['rows'] as $hostid => &$host) {
 			$host['metrics'] = $metrics[$hostid] ?? array_fill_keys(array_values(self::VM_KEYS), null);
 			$host['problems'] = $problems[$hostid] ?? [];
+			$host['inventory'] = $inventory[$hostid]['inventory'] ?? [];
 		}
 		unset($host);
 		$paged['rows'] = array_values($paged['rows']);
@@ -420,6 +427,72 @@ class VMwareCollector {
 		}
 		unset($item);
 		return $items;
+	}
+
+	public static function sensors(string $hostid): array {
+		$items = API::Item()->get([
+			'output' => [
+				'itemid', 'name', 'key_', 'lastvalue', 'lastclock', 'status', 'state', 'error'
+			],
+			'selectTags' => ['tag', 'value'],
+			'selectTriggers' => ['triggerid', 'description', 'priority', 'value', 'status', 'lastchange'],
+			'hostids' => [$hostid],
+			'search' => ['key_' => 'vmware.hv.sensor.state['],
+			'startSearch' => true,
+			'monitored' => true,
+			'webitems' => false
+		]) ?: [];
+
+		$result = [];
+		foreach ($items as $item) {
+			// Do not include the separate sensor-health rollup item.
+			if (!str_starts_with((string) $item['key_'], 'vmware.hv.sensor.state[')) {
+				continue;
+			}
+
+			$name = (string) $item['name'];
+			if (preg_match('/^Sensor \[(.*)\] health state$/u', $name, $matches)) {
+				$name = $matches[1];
+			}
+
+			$type = '';
+			foreach ($item['tags'] ?? [] as $tag) {
+				if (($tag['tag'] ?? '') === 'type') {
+					$type = (string) ($tag['value'] ?? '');
+					break;
+				}
+			}
+
+			$problems = [];
+			foreach ($item['triggers'] ?? [] as $trigger) {
+				if ((int) ($trigger['value'] ?? TRIGGER_VALUE_FALSE) === TRIGGER_VALUE_TRUE
+						&& (int) ($trigger['status'] ?? TRIGGER_STATUS_DISABLED) === TRIGGER_STATUS_ENABLED) {
+					$problems[] = [
+						'triggerid' => (string) $trigger['triggerid'],
+						'name' => (string) $trigger['description'],
+						'severity' => (int) $trigger['priority'],
+						'lastchange' => (int) $trigger['lastchange']
+					];
+				}
+			}
+			usort($problems, static fn(array $a, array $b): int =>
+				$b['severity'] <=> $a['severity'] ?: $b['lastchange'] <=> $a['lastchange']
+			);
+
+			$has_value = (int) ($item['lastclock'] ?? 0) > 0;
+			$result[] = [
+				'itemid' => (string) $item['itemid'],
+				'name' => $name,
+				'type' => $type,
+				'value' => $has_value ? (string) $item['lastvalue'] : null,
+				'lastclock' => (int) ($item['lastclock'] ?? 0),
+				'state' => (int) ($item['state'] ?? ITEM_STATE_NORMAL),
+				'error' => (string) ($item['error'] ?? ''),
+				'problems' => $problems
+			];
+		}
+
+		return $result;
 	}
 
 	private static function itemsByKeys(array $hostids, array $key_map): array {

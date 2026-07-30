@@ -9,7 +9,7 @@ the Zabbix API with the permissions of the logged-in user.
 ## Features
 
 - Multiple-vCenter overview under **Monitoring → VMware**
-- vCenter health, product/version, availability, active problems and discovered-object totals
+- vCenter health, product/version, active problems and discovered-object totals
 - Reliable vCenter-to-object correlation using the Zabbix low-level discovery rule that created each
   hypervisor and VM host
 - Cluster summary with hypervisor count, VM count and physical-memory utilization
@@ -18,6 +18,8 @@ the Zabbix API with the permissions of the logged-in user.
   - connection and health states
   - CPU history sparkline and memory utilization
   - VM count, uptime, version and active problems
+  - a Sensors action showing discovered hardware sensors, latest mapped VMware state, collection
+    errors and related active problems
 - Discovered virtual machine table:
   - hypervisor, datacenter and cluster placement
   - power and runtime state

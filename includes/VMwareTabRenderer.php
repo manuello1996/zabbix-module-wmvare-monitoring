@@ -73,7 +73,7 @@ class VMwareTabRenderer {
 			$cluster = trim((string) $m['cluster']);
 
 			$table->addRow([
-				self::hostActionLink($hypervisor['name'], $hypervisor['hostid']),
+				self::hostActionLink($hypervisor['name'], $hypervisor['hostid'], true),
 				(new CDiv([
 					(new CSpan($m['datacenter'] ?: '-'))->addClass('vmware-monitoring-muted'),
 					new CSpan($cluster !== '' ? $cluster : _('Standalone (no cluster)'))
@@ -103,8 +103,8 @@ class VMwareTabRenderer {
 	private static function vms(array $data): CDiv {
 		$table = (new CTableInfo())
 			->setHeader([
-				_('Virtual machine'), _('Placement'), _('Power'), _('State'), _('Problems'), _('CPU (24h)'),
-				_('Memory'), _('Storage'), _('VMware Tools'), _('Snapshots'), _('Uptime')
+				_('Virtual machine'), _('Notes'), _('Placement'), _('Power'), _('State'), _('Problems'),
+				_('CPU (24h)'), _('Memory'), _('Storage'), _('VMware Tools'), _('Snapshots'), _('Uptime')
 			])
 			->setNoDataMessage(_('No virtual machines found.'));
 
@@ -120,6 +120,8 @@ class VMwareTabRenderer {
 
 			$table->addRow([
 				self::hostActionLink($vm['name'], $vm['hostid']),
+				(new CSpan(trim((string) ($vm['inventory']['notes'] ?? '')) ?: '-'))
+					->addClass('vmware-monitoring-vm-notes'),
 				(new CDiv([
 					new CSpan($m['hypervisor'] ?: '-'),
 					$placement
@@ -264,7 +266,7 @@ class VMwareTabRenderer {
 			->addClass('vmware-monitoring-state-'.$state['kind']);
 	}
 
-	private static function hostActionLink(string $name, string $hostid): CLinkAction {
+	private static function hostActionLink(string $name, string $hostid, bool $show_sensors = false): CLinkAction {
 		$latest_data = (new CUrl('zabbix.php'))
 			->setArgument('action', 'latest.view')
 			->setArgument('hostids', [$hostid])
@@ -274,6 +276,17 @@ class VMwareTabRenderer {
 			->setArgument('action', 'host.dashboard.view')
 			->setArgument('hostid', $hostid)
 			->getUrl();
+		$items = [
+			$latest_data => _('Latest data'),
+			$dashboard => _('Host dashboard')
+		];
+		if ($show_sensors) {
+			$sensors = (new CUrl('zabbix.php'))
+				->setArgument('action', 'vmware.monitoring.sensors')
+				->setArgument('hostid', $hostid)
+				->getUrl();
+			$items[$sensors] = _('Sensors');
+		}
 
 		return (new CLinkAction($name))
 			->addClass('vmware-monitoring-name')
@@ -283,10 +296,7 @@ class VMwareTabRenderer {
 					'submenu' => [
 						'view' => [
 							'label' => _('View'),
-							'items' => [
-								$latest_data => _('Latest data'),
-								$dashboard => _('Host dashboard')
-							]
+							'items' => $items
 						]
 					]
 				]
@@ -303,30 +313,20 @@ class VMwareTabRenderer {
 			$items[] = (new CSpan($hypervisor))->addClass('vmware-monitoring-datastore-hypervisor');
 		}
 		if (count($hypervisors) > 3) {
-			$popup_items = [];
-			foreach (array_slice($hypervisors, 3, null, true) as $hostid => $hypervisor) {
-				$url = (new CUrl('zabbix.php'))
-					->setArgument('action', 'latest.view')
-					->setArgument('hostids', [(string) $hostid])
-					->setArgument('filter_set', 1)
-					->getUrl();
-				$popup_items[$url] = $hypervisor;
+			$hidden_items = [];
+			foreach (array_slice($hypervisors, 3, null, true) as $hypervisor) {
+				$hidden_items[] = (new CDiv($hypervisor))
+					->addClass('vmware-monitoring-hidden-hypervisor');
 			}
 
 			$items[] = (new CLinkAction(sprintf(_('+%1$d more'), count($hypervisors) - 3)))
 				->addClass('vmware-monitoring-datastore-hypervisor')
 				->addClass('vmware-monitoring-datastore-hypervisor-more')
-				->setMenuPopup([
-					'type' => 'submenu',
-					'data' => [
-						'submenu' => [
-							'hypervisors' => [
-								'label' => _('Attached hypervisors'),
-								'items' => $popup_items
-							]
-						]
-					]
-				]);
+				->setHint(
+					(new CDiv($hidden_items))->addClass('vmware-monitoring-hidden-hypervisors'),
+					ZBX_STYLE_HINTBOX_WRAP,
+					true
+				);
 		}
 
 		return (new CDiv($items))

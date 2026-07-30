@@ -12,6 +12,7 @@ html[theme="hc-dark"] {
 	--vmware-monitoring-primary-fg: #16232e;
 	--vmware-monitoring-surface-muted: #333333;
 	--vmware-monitoring-tint-red: rgba(255, 92, 92, .07);
+	--vmware-monitoring-tint-yellow: rgba(240, 151, 90, .08);
 	--vmware-monitoring-blue: #6aa9e8;
 	--vmware-monitoring-orange: #f0975a;
 	--vmware-monitoring-crit: #ff6b6b;

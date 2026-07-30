@@ -111,7 +111,6 @@ $table = (new CTableInfo())
 	->setId('vmware-monitoring-vcenters-table')
 	->setHeader([
 		_('vCenter'),
-		_('Availability'),
 		_('Health'),
 		_('Problems'),
 		_('Version'),
@@ -135,7 +134,6 @@ foreach ($data['vcenters'] as $vcenter) {
 			(new CSpan())->addClass('vmware-monitoring-container-icon'),
 			(new CLink($vcenter['name'], $url))->addClass('vmware-monitoring-name')
 		]))->addClass('vmware-monitoring-name-cell'),
-		(new CHostAvailability())->setInterfaces($vcenter['interfaces']),
 		(new CSpan($health['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$health['kind']),

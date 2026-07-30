@@ -10,6 +10,7 @@
 	--vmware-monitoring-primary-fg: #ffffff;
 	--vmware-monitoring-surface-muted: #f4f6f8;
 	--vmware-monitoring-tint-red: #fcf0f0;
+	--vmware-monitoring-tint-yellow: #fff8eb;
 	--vmware-monitoring-blue: #4a90d9;
 	--vmware-monitoring-orange: #e8873a;
 	--vmware-monitoring-crit: #e03131;
@@ -686,7 +687,8 @@
 
 #vmware-monitoring-table thead th,
 #vmware-monitoring-nodes-table thead th,
-#vmware-monitoring-vcenters-table thead th {
+#vmware-monitoring-vcenters-table thead th,
+#vmware-monitoring-sensors-table thead th {
 	font-size: 11px;
 	letter-spacing: .06em;
 	text-transform: uppercase;
@@ -696,7 +698,8 @@
 
 #vmware-monitoring-table tbody td,
 #vmware-monitoring-nodes-table tbody td,
-#vmware-monitoring-vcenters-table tbody td {
+#vmware-monitoring-vcenters-table tbody td,
+#vmware-monitoring-sensors-table tbody td {
 	padding-top: 12px;
 	padding-bottom: 12px;
 	vertical-align: middle;
@@ -1412,6 +1415,43 @@
 
 .vmware-monitoring-datastore-hypervisor-more {
 	color: var(--vmware-monitoring-text-muted);
+}
+
+.vmware-monitoring-hidden-hypervisors {
+	display: grid;
+	gap: 4px;
+	min-width: 180px;
+}
+
+.vmware-monitoring-hidden-hypervisor {
+	overflow-wrap: anywhere;
+}
+
+.vmware-monitoring-vm-notes {
+	display: inline-block;
+	max-width: 280px;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+
+.vmware-monitoring-sensor-state-0 td {
+	background-color: var(--vmware-monitoring-surface-muted);
+}
+
+.vmware-monitoring-sensor-state-2 td {
+	background-color: var(--vmware-monitoring-tint-yellow);
+}
+
+.vmware-monitoring-sensor-state-3 td,
+.vmware-monitoring-sensor-state-unsupported td {
+	background-color: var(--vmware-monitoring-tint-red);
+}
+
+.vmware-monitoring-sensor-problems {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	max-width: 420px;
 }
 
 .vmware-monitoring-refresh-status {

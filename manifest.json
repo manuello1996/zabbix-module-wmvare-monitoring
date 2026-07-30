@@ -24,6 +24,11 @@
 		"vmware.monitoring.sparkline": {
 			"class": "CControllerVMwareSparkline",
 			"layout": "layout.json"
+		},
+		"vmware.monitoring.sensors": {
+			"class": "CControllerVMwareSensors",
+			"view": "vmware.monitoring.sensors",
+			"layout": "layout.htmlpage"
 		}
 	},
 	"assets": {
