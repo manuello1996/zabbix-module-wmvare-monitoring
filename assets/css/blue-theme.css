@@ -1467,6 +1467,19 @@
 	text-align: left;
 }
 
+.vmware-monitoring-capacity-cell {
+	display: grid;
+	grid-template-columns: 58px minmax(80px, 150px);
+	align-items: center;
+	gap: 10px;
+}
+
+.vmware-monitoring-capacity-note {
+	margin-top: 10px;
+	color: var(--vmware-monitoring-text-muted);
+	font-size: 11.5px;
+}
+
 .vmware-monitoring-refresh-status {
 	margin-left: 8px;
 	font-size: .85em;

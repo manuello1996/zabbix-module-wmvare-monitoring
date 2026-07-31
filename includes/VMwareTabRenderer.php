@@ -221,10 +221,36 @@ class VMwareTabRenderer {
 				? ['text' => $row['name'] === _('Standalone (no cluster)') ? _('Not applicable') : _('Unknown'),
 					'kind' => 'unknown']
 				: VMwareFormatter::hypervisorHealth($row['status']);
+			$hypervisors_url = (new CUrl('zabbix.php'))
+				->setArgument('action', 'vmware.monitoring.view')
+				->setArgument('filter_hostid', [$row['vcenter_hostid']])
+				->setArgument('filter_set', 1)
+				->setArgument('tab', 'hypervisors')
+				->setArgument('search', $row['name'])
+				->getUrl();
+			$detail_url = (new CUrl('zabbix.php'))
+				->setArgument('action', 'vmware.monitoring.cluster')
+				->setArgument('hostid', $row['vcenter_hostid'])
+				->setArgument('cluster', $row['name'])
+				->getUrl();
+			$cluster_link = (new CLinkAction($row['name']))
+				->addClass('vmware-monitoring-name')
+				->setMenuPopup([
+					'type' => 'submenu',
+					'data' => [
+						'submenu' => [
+							'view' => [
+								'label' => _('View'),
+								'items' => [
+									$hypervisors_url => _('Hypervisors'),
+									$detail_url => _('Details')
+								]
+							]
+						]
+					]
+				]);
 			$table->addRow([
-				(new CLink($row['name'], '#'))
-					->addClass('vmware-monitoring-name')
-					->setAttribute('data-vmware-monitoring-cluster', $row['name']),
+				$cluster_link,
 				self::state($status),
 				(string) $row['hypervisors'],
 				VMwareFormatter::bytes($row['memory_used']),
@@ -266,7 +292,7 @@ class VMwareTabRenderer {
 			->addClass('vmware-monitoring-state-'.$state['kind']);
 	}
 
-	private static function hostActionLink(string $name, string $hostid, bool $show_sensors = false): CLinkAction {
+	public static function hostActionLink(string $name, string $hostid, bool $show_sensors = false): CLinkAction {
 		$latest_data = (new CUrl('zabbix.php'))
 			->setArgument('action', 'latest.view')
 			->setArgument('hostids', [$hostid])
@@ -342,7 +368,7 @@ class VMwareTabRenderer {
 		return $div;
 	}
 
-	private static function problemBadge(array $severities, string $hostid) {
+	public static function problemBadge(array $severities, string $hostid) {
 		if (!$severities) {
 			return (new CSpan(_('None')))->addClass(ZBX_STYLE_GREEN);
 		}

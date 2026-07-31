@@ -295,9 +295,21 @@ class VMwareCollector {
 
 		if ($search !== '') {
 			$needle = mb_strtolower($search);
-			$vms = array_filter($vms,
-				static fn(array $vm): bool => str_contains(mb_strtolower($vm['name']), $needle)
-			);
+			$placement = self::itemsByKeys(array_keys($vms), [
+				'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster',
+				'vmware.vm.datacenter.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'datacenter',
+				'vmware.vm.hv.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'hypervisor'
+			]);
+			$vms = array_filter($vms, static function (array $vm) use ($needle, $placement): bool {
+				if (str_contains(mb_strtolower($vm['name']), $needle)) {
+					return true;
+				}
+				$metrics = $placement[$vm['hostid']] ?? [];
+				return str_contains(mb_strtolower(implode(' ', [
+					(string) ($metrics['cluster'] ?? ''), (string) ($metrics['datacenter'] ?? ''),
+					(string) ($metrics['hypervisor'] ?? '')
+				])), $needle);
+			});
 		}
 
 		$paged = self::paginateArray($vms, $page, $per_page);
@@ -383,7 +395,8 @@ class VMwareCollector {
 			$name = trim((string) ($tags['cluster'] ?? ''));
 			if ($name !== '') {
 				$result[$name] = [
-					'name' => $name, 'status' => self::hasRecentValue($item) ? $item['lastvalue'] : null,
+					'name' => $name, 'vcenter_hostid' => $vcenter_hostid,
+					'status' => self::hasRecentValue($item) ? $item['lastvalue'] : null,
 					'hypervisors' => 0, 'memory_total' => 0.0, 'memory_used' => 0.0
 				];
 			}
@@ -391,10 +404,13 @@ class VMwareCollector {
 
 		foreach ($topology['hypervisors'] as $hostid => $host) {
 			$m = $hv_metrics[$hostid] ?? [];
+			if (($m['cluster'] ?? null) === null) {
+				continue;
+			}
 			$name = trim((string) ($m['cluster'] ?? ''));
 			$name = $name !== '' ? $name : _('Standalone (no cluster)');
 			$result[$name] ??= [
-				'name' => $name, 'status' => null, 'hypervisors' => 0,
+				'name' => $name, 'vcenter_hostid' => $vcenter_hostid, 'status' => null, 'hypervisors' => 0,
 				'memory_total' => 0.0, 'memory_used' => 0.0
 			];
 			$result[$name]['hypervisors']++;
@@ -403,6 +419,313 @@ class VMwareCollector {
 		}
 		uksort($result, 'strnatcasecmp');
 		return array_values($result);
+	}
+
+	public static function clusterDetail(string $vcenter_hostid, string $cluster_name): ?array {
+		$topology = self::discoveredTopology($vcenter_hostid, true, true);
+		$key_map = [
+			'vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cluster',
+			'vmware.hv.connectionstate[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'connection',
+			'vmware.hv.status[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'health',
+			'vmware.hv.cpu.usage.perf[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_pct',
+			'vmware.hv.cpu.usage[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_used',
+			'vmware.hv.hw.cpu.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_cores',
+			'vmware.hv.hw.cpu.threads[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_threads',
+			'vmware.hv.hw.cpu.freq[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_frequency',
+			'vmware.hv.hw.cpu.model[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_model',
+			'vmware.hv.hw.vendor[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vendor',
+			'vmware.hv.hw.model[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'model',
+			'vmware.hv.memory.used[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_used',
+			'vmware.hv.hw.memory[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_total',
+			'vmware.hv.memory.size.ballooned[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_ballooned',
+			'vmware.hv.network.in[{$VMWARE.URL},{$VMWARE.HV.UUID},bps]' => 'network_in',
+			'vmware.hv.network.out[{$VMWARE.URL},{$VMWARE.HV.UUID},bps]' => 'network_out',
+			'vmware.hv.network.in[{$VMWARE.URL},{$VMWARE.HV.UUID},dropped]' => 'network_dropped_in',
+			'vmware.hv.network.out[{$VMWARE.URL},{$VMWARE.HV.UUID},dropped]' => 'network_dropped_out',
+			'vmware.hv.network.in[{$VMWARE.URL},{$VMWARE.HV.UUID},errors]' => 'network_errors_in',
+			'vmware.hv.network.out[{$VMWARE.URL},{$VMWARE.HV.UUID},errors]' => 'network_errors_out',
+			'vmware.hv.power[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'power',
+			'vmware.hv.power[{$VMWARE.URL},{$VMWARE.HV.UUID},max]' => 'power_max',
+			'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count',
+			'vmware.hv.uptime[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'uptime',
+			'vmware.hv.version[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'version'
+		];
+		$metrics = self::itemsByKeys(array_keys($topology['hypervisors']), $key_map);
+		$standalone_name = _('Standalone (no cluster)');
+		$is_standalone = $cluster_name === $standalone_name;
+		$hypervisors = [];
+
+		foreach ($topology['hypervisors'] as $hostid => $host) {
+			$host_metrics = $metrics[$hostid] ?? array_fill_keys(array_values($key_map), null);
+			$actual_cluster = trim((string) ($host_metrics['cluster'] ?? ''));
+			$matches = $is_standalone
+				? $host_metrics['cluster'] !== null && $actual_cluster === ''
+				: $actual_cluster === $cluster_name;
+			if (!$matches) {
+				continue;
+			}
+
+			$host_metrics['cpu_capacity'] = $host_metrics['cpu_cores'] !== null
+					&& $host_metrics['cpu_frequency'] !== null
+				? (float) $host_metrics['cpu_cores'] * (float) $host_metrics['cpu_frequency']
+				: null;
+			$host['metrics'] = $host_metrics;
+			$hypervisors[$hostid] = $host;
+		}
+
+		$cluster_status = null;
+		$cluster_triggerids = [];
+		$cluster_exists = $is_standalone && (bool) $hypervisors;
+		if (!$is_standalone) {
+			$status_items = API::Item()->get([
+				'output' => ['lastvalue', 'lastclock'],
+				'selectTags' => ['tag', 'value'],
+				'selectTriggers' => ['triggerid'],
+				'hostids' => [$vcenter_hostid],
+				'search' => ['key_' => 'vmware.cluster.status['],
+				'startSearch' => true,
+				'monitored' => true
+			]) ?: [];
+			foreach ($status_items as $item) {
+				$tags = array_column($item['tags'] ?? [], 'value', 'tag');
+				if (trim((string) ($tags['cluster'] ?? '')) === $cluster_name) {
+					$cluster_exists = true;
+					$cluster_status = self::hasRecentValue($item) ? $item['lastvalue'] : null;
+					$cluster_triggerids = array_column($item['triggers'] ?? [], 'triggerid');
+					break;
+				}
+			}
+		}
+
+		if (!$cluster_exists && !$hypervisors) {
+			return null;
+		}
+
+		$problems = self::problemsByHosts(array_keys($hypervisors));
+		$cluster_problems = $cluster_triggerids
+			? API::Problem()->get([
+				'output' => ['eventid', 'severity'],
+				'objectids' => $cluster_triggerids,
+				'source' => EVENT_SOURCE_TRIGGERS,
+				'object' => EVENT_OBJECT_TRIGGER,
+				'suppressed' => false
+			]) ?: []
+			: [];
+		$totals = [
+			'cpu_capacity' => 0.0, 'cpu_used' => 0.0, 'memory_total' => 0.0, 'memory_used' => 0.0,
+			'vm_count' => 0, 'problems' => count($cluster_problems), 'problem_severities' => [],
+			'connected' => 0, 'connection_known' => 0, 'cpu_cores' => 0, 'cpu_threads' => 0,
+			'memory_ballooned' => 0.0, 'network_in' => 0.0, 'network_out' => 0.0,
+			'network_dropped_in' => 0.0, 'network_dropped_out' => 0.0,
+			'network_errors_in' => 0.0, 'network_errors_out' => 0.0,
+			'power' => 0.0, 'power_max' => 0.0,
+			'minimum_uptime' => null, 'versions' => [], 'vendors' => [], 'models' => [], 'cpu_models' => [],
+			'known' => []
+		];
+		foreach ($cluster_problems as $problem) {
+			$severity = (int) $problem['severity'];
+			$totals['problem_severities'][$severity] = ($totals['problem_severities'][$severity] ?? 0) + 1;
+		}
+		$complete = ['cpu_capacity' => (bool) $hypervisors, 'cpu_used' => (bool) $hypervisors,
+			'memory_total' => (bool) $hypervisors, 'memory_used' => (bool) $hypervisors];
+		$largest = ['cpu_capacity' => 0.0, 'memory_total' => 0.0];
+
+		foreach ($hypervisors as $hostid => &$host) {
+			$m = $host['metrics'];
+			$host['problems'] = $problems[$hostid] ?? [];
+			$totals['vm_count'] += (int) ($m['vm_count'] ?? 0);
+			$totals['problems'] += array_sum($host['problems']);
+			foreach ($host['problems'] as $severity => $count) {
+				$totals['problem_severities'][$severity] =
+					($totals['problem_severities'][$severity] ?? 0) + $count;
+			}
+			if ($m['connection'] !== null) {
+				$totals['connection_known']++;
+				$totals['connected'] += (string) $m['connection'] === '0' ? 1 : 0;
+			}
+			foreach (['cpu_cores', 'cpu_threads', 'memory_ballooned', 'network_in', 'network_out',
+				'network_dropped_in', 'network_dropped_out', 'network_errors_in', 'network_errors_out',
+				'power', 'power_max'] as $field) {
+				if ($m[$field] !== null) {
+					$totals[$field] += (float) $m[$field];
+					$totals['known'][$field] = ($totals['known'][$field] ?? 0) + 1;
+				}
+			}
+			if ($m['uptime'] !== null) {
+				$totals['minimum_uptime'] = $totals['minimum_uptime'] === null
+					? (float) $m['uptime'] : min($totals['minimum_uptime'], (float) $m['uptime']);
+			}
+			foreach (['version' => 'versions', 'vendor' => 'vendors', 'model' => 'models',
+				'cpu_model' => 'cpu_models'] as $field => $distribution) {
+				$value = trim((string) ($m[$field] ?? ''));
+				if ($value !== '') {
+					$totals[$distribution][$value] = ($totals[$distribution][$value] ?? 0) + 1;
+				}
+			}
+
+			foreach (['cpu_capacity', 'cpu_used', 'memory_total', 'memory_used'] as $field) {
+				if ($m[$field] === null) {
+					$complete[$field] = false;
+				}
+				else {
+					$totals[$field] += (float) $m[$field];
+				}
+			}
+			if ($m['cpu_capacity'] !== null) {
+				$largest['cpu_capacity'] = max($largest['cpu_capacity'], (float) $m['cpu_capacity']);
+			}
+			if ($m['memory_total'] !== null) {
+				$largest['memory_total'] = max($largest['memory_total'], (float) $m['memory_total']);
+			}
+		}
+		unset($host);
+		uasort($hypervisors, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
+
+		$vm_metrics = self::itemsByKeys(array_keys($topology['vms']), [
+			'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster'
+		]);
+		$discovered_vms = 0;
+		foreach ($topology['vms'] as $hostid => $vm) {
+			$vm_cluster_value = $vm_metrics[$hostid]['cluster'] ?? null;
+			$vm_cluster = trim((string) ($vm_cluster_value ?? ''));
+			if (($is_standalone && $vm_cluster_value !== null && $vm_cluster === '')
+					|| (!$is_standalone && $vm_cluster === $cluster_name)) {
+				$discovered_vms++;
+			}
+		}
+
+		$attachments = self::datastores(array_keys($hypervisors), true);
+		foreach ($attachments as &$attachment) {
+			$hostid = (string) $attachment['hostid'];
+			$attachment['hypervisor'] = $hypervisors[$hostid]['name'] ?? '';
+		}
+		unset($attachment);
+		$datastores = self::uniqueDatastores($attachments);
+		$datastore_totals = ['count' => count($datastores), 'attachments' => count($attachments),
+			'capacity' => 0.0, 'free' => 0.0, 'lowest_free_pct' => null];
+		foreach ($datastores as $datastore) {
+			if ($datastore['total'] !== null) {
+				$datastore_totals['capacity'] += (float) $datastore['total'];
+				if ($datastore['free_pct'] !== null) {
+					$datastore_totals['free'] += (float) $datastore['total'] * (float) $datastore['free_pct'] / 100;
+				}
+			}
+			if ($datastore['free_pct'] !== null) {
+				$datastore_totals['lowest_free_pct'] = $datastore_totals['lowest_free_pct'] === null
+					? (float) $datastore['free_pct']
+					: min($datastore_totals['lowest_free_pct'], (float) $datastore['free_pct']);
+			}
+		}
+
+		$sensor_summary = ['total' => 0, 'states' => [], 'types' => []];
+		if ($hypervisors) {
+			$sensor_items = API::Item()->get([
+				'output' => ['key_', 'lastvalue', 'lastclock'],
+				'selectTags' => ['tag', 'value'],
+				'hostids' => array_keys($hypervisors),
+				'search' => ['key_' => 'vmware.hv.sensor.state['],
+				'startSearch' => true,
+				'monitored' => true,
+				'webitems' => false
+			]) ?: [];
+			foreach ($sensor_items as $item) {
+				if (!str_starts_with((string) $item['key_'], 'vmware.hv.sensor.state[')) {
+					continue;
+				}
+				$tags = array_column($item['tags'] ?? [], 'value', 'tag');
+				$type = trim((string) ($tags['type'] ?? '')) ?: _('Other');
+				$state = self::hasRecentValue($item) ? (string) $item['lastvalue'] : 'unknown';
+				$sensor_summary['total']++;
+				$sensor_summary['states'][$state] = ($sensor_summary['states'][$state] ?? 0) + 1;
+				$sensor_summary['types'][$type] = ($sensor_summary['types'][$type] ?? 0) + 1;
+			}
+			uksort($sensor_summary['types'], 'strnatcasecmp');
+		}
+
+		$capacity = [
+			'cpu_utilization' => $complete['cpu_capacity'] && $complete['cpu_used']
+					&& $totals['cpu_capacity'] > 0
+				? $totals['cpu_used'] / $totals['cpu_capacity'] * 100
+				: null,
+			'memory_utilization' => $complete['memory_total'] && $complete['memory_used']
+					&& $totals['memory_total'] > 0
+				? $totals['memory_used'] / $totals['memory_total'] * 100
+				: null,
+			'cpu_after_loss' => null, 'memory_after_loss' => null,
+			'cpu_headroom' => null, 'memory_headroom' => null
+		];
+		$n_plus_one = !$is_standalone && count($hypervisors) === 1 ? false : null;
+		if (!$is_standalone && count($hypervisors) >= 1
+				&& !in_array(false, $complete, true)) {
+			$capacity['cpu_after_loss'] = $totals['cpu_capacity'] - $largest['cpu_capacity'];
+			$capacity['memory_after_loss'] = $totals['memory_total'] - $largest['memory_total'];
+			$capacity['cpu_headroom'] = $capacity['cpu_after_loss'] - $totals['cpu_used'];
+			$capacity['memory_headroom'] = $capacity['memory_after_loss'] - $totals['memory_used'];
+			$n_plus_one = count($hypervisors) >= 2
+				&& $capacity['cpu_headroom'] >= 0 && $capacity['memory_headroom'] >= 0;
+		}
+
+		$native = [];
+		if (!$is_standalone) {
+			$allowed_native_fields = [
+				'tags', 'summary.numHosts', 'summary.numEffectiveHosts',
+				'summary.numCpuCores', 'summary.numCpuThreads', 'summary.totalCpu',
+				'summary.effectiveCpu', 'summary.totalMemory', 'summary.effectiveMemory',
+				'summary.usageSummary.cpuReservationMhz',
+				'perf:"clusterServices/effectivecpu[average]"',
+				'perf:"clusterServices/effectivemem[average]"'
+			];
+			$native_items = API::Item()->get([
+				'output' => ['name', 'key_', 'lastvalue', 'lastclock', 'state', 'error', 'units'],
+				'selectTags' => ['tag', 'value'],
+				'hostids' => [$vcenter_hostid],
+				'search' => ['key_' => 'vmware.cl'],
+				'startSearch' => true,
+				'monitored' => true,
+				'webitems' => false
+			]) ?: [];
+			foreach ($native_items as $item) {
+				$tags = array_column($item['tags'] ?? [], 'value', 'tag');
+				if (trim((string) ($tags['cluster'] ?? '')) !== $cluster_name
+						|| !self::hasRecentValue($item)
+						|| (int) ($item['state'] ?? ITEM_STATE_NOTSUPPORTED) !== ITEM_STATE_NORMAL) {
+					continue;
+				}
+				$key = (string) $item['key_'];
+				$field = null;
+				if (preg_match('/vmware\.cluster\.property\[.*?,[^,\]]+,([^,\]]+)\]$/', $key, $match)) {
+					$field = $match[1];
+				}
+				elseif (preg_match('/vmware\.cl\.perfcounter\[.*?,[^,\]]+,(.*)\]$/', $key, $match)) {
+					$field = 'perf:'.$match[1];
+				}
+				elseif (str_starts_with($key, 'vmware.cluster.tags.get[')) {
+					$field = 'tags';
+				}
+				if ($field !== null && in_array($field, $allowed_native_fields, true)) {
+					$native[$field] = [
+						'name' => (string) $item['name'], 'value' => (string) $item['lastvalue'],
+						'units' => (string) ($item['units'] ?? ''), 'lastclock' => (int) $item['lastclock']
+					];
+				}
+			}
+		}
+
+		return [
+			'name' => $cluster_name,
+			'status' => $cluster_status,
+			'is_standalone' => $is_standalone,
+			'hypervisors' => array_values($hypervisors),
+			'totals' => $totals,
+			'complete' => $complete,
+			'capacity' => $capacity,
+			'n_plus_one' => $n_plus_one,
+			'native' => $native,
+			'discovered_vms' => $discovered_vms,
+			'datastores' => $datastores,
+			'datastore_totals' => $datastore_totals,
+			'sensors' => $sensor_summary
+		];
 	}
 
 	public static function alarms(string $vcenter_hostid): array {

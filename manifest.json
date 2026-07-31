@@ -29,6 +29,11 @@
 			"class": "CControllerVMwareSensors",
 			"view": "vmware.monitoring.sensors",
 			"layout": "layout.htmlpage"
+		},
+		"vmware.monitoring.cluster": {
+			"class": "CControllerVMwareCluster",
+			"view": "vmware.monitoring.cluster",
+			"layout": "layout.htmlpage"
 		}
 	},
 	"assets": {

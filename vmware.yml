@@ -498,7 +498,7 @@ zabbix_export:
                   expression: 'last(/VMware/vmware.cluster.status[{$VMWARE.URL},{#CLUSTER.NAME}])=3'
                   name: 'VMware: The [{#CLUSTER.NAME}] status is Red'
                   priority: HIGH
-                  description: 'A cluster enabled for DRS becomes invalid (red) when the tree is no longer internally consistent, that is, when resource constraints are not observed. See also: https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-C7417CAA-BD38-41D0-9529-9E7A5898BB12.html'
+                  description: 'The cluster reports a red overall status because one or more resource or configuration constraints are not satisfied.'
                   tags:
                     - tag: scope
                       value: availability
@@ -517,6 +517,163 @@ zabbix_export:
                       value: availability
                     - tag: scope
                       value: performance
+            - uuid: a7807045f79b44fba0320434788ee727
+              delay: 1h
+              name: 'Cluster [{#CLUSTER.NAME}] tags'
+              type: SIMPLE
+              key: 'vmware.cluster.tags.get[{$VMWARE.URL},{#CLUSTER.ID}]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              history: '0'
+              value_type: TEXT
+              trends: '0'
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 88886916528e43d88adce503c24b4ca7
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] configured hosts'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.numHosts]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 473b54da4a7040d2b646788217a33933
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] effective hosts'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.numEffectiveHosts]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 1e4a687663334cf4b859ff5263c8526b
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] CPU cores'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.numCpuCores]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 9457702ba796422c8bb90a81e7086f86
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] CPU threads'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.numCpuThreads]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 6c797c86ed974afca2e27278843a5491
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] total CPU'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.totalCpu]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              units: MHz
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 9504a7da45d6437da406482466ec0561
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] effective CPU'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.effectiveCpu]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              units: MHz
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 70d763a0a30647a8be3ae1451fdc9bde
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] total memory'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.totalMemory]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              units: B
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 0694ff73ced54c4f94ff5ff02b4ebcf8
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] effective memory'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.effectiveMemory]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              units: MB
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: 0d67a333610b4bc48d57598e88680ecc
+              delay: 5m
+              name: 'Cluster [{#CLUSTER.NAME}] CPU reservation'
+              type: SIMPLE
+              key: 'vmware.cluster.property[{$VMWARE.URL},{#CLUSTER.ID},summary.usageSummary.cpuReservationMhz]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              units: MHz
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: e6bcc70aea35498bbd52dfd251951050
+              delay: 1m
+              name: 'Cluster [{#CLUSTER.NAME}] effective CPU average'
+              type: SIMPLE
+              key: 'vmware.cl.perfcounter[{$VMWARE.URL},{#CLUSTER.ID},"clusterServices/effectivecpu[average]"]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              value_type: FLOAT
+              units: MHz
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+            - uuid: cc7b91eac3544482ad7530dbaad704c8
+              delay: 1m
+              name: 'Cluster [{#CLUSTER.NAME}] effective memory average'
+              type: SIMPLE
+              key: 'vmware.cl.perfcounter[{$VMWARE.URL},{#CLUSTER.ID},"clusterServices/effectivemem[average]"]'
+              username: '{$VMWARE.USERNAME}'
+              password: '{$VMWARE.PASSWORD}'
+              value_type: FLOAT
+              units: MB
+              tags:
+                - tag: cluster
+                  value: '{#CLUSTER.NAME}'
+                - tag: component
+                  value: cluster
+
         - uuid: 8fb6a45cbe074b0cb6df53758e2c6623
           name: 'VMware datastore discovery'
           type: SIMPLE

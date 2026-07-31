@@ -25,7 +25,9 @@ class CControllerVMwareView extends CController {
 				'filter_groupids' => 'array_db hstgrp.groupid',
 				'filter_hostid' => 'array_db hosts.hostid',
 				'filter_set' => 'in 1',
-				'filter_rst' => 'in 1'
+				'filter_rst' => 'in 1',
+				'tab' => 'in overview,hypervisors,vms,datastores,clusters,alarms',
+				'search' => 'string'
 			]);
 
 		if (!$ret) {
@@ -113,6 +115,8 @@ class CControllerVMwareView extends CController {
 		}
 
 		$data = [
+			'initial_tab' => (string) $this->getInput('tab', 'overview'),
+			'initial_search' => trim((string) $this->getInput('search', '')),
 			'filter' => [
 				'groups' => array_values($groups),
 				'hostid' => $hostid

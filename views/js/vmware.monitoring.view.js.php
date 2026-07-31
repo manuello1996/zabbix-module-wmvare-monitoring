@@ -4,7 +4,7 @@ window.vmware_monitoring = new class {
 	init(config) {
 		this.hostid = String(config.hostid || '');
 		this.panel = document.getElementById('vmware-monitoring-panel');
-		this.activeTab = 'overview';
+		this.activeTab = String(config.tab || 'overview');
 		this.cache = new Map();
 		this.state = new Map();
 		this.searchTimer = null;
@@ -12,7 +12,10 @@ window.vmware_monitoring = new class {
 		this.bindTabs();
 		this.bindFilters();
 		this.bindPanel();
-		this.loadTab('overview');
+		if (this.activeTab === 'hypervisors') {
+			this.getState('hypervisors').search = String(config.search || '').trim();
+		}
+		this.activateTab(this.activeTab);
 	}
 
 	bindTabs() {
@@ -48,16 +51,6 @@ window.vmware_monitoring = new class {
 
 	bindPanel() {
 		this.panel.addEventListener('click', event => {
-			const cluster = event.target.closest('[data-vmware-monitoring-cluster]');
-			if (cluster) {
-				event.preventDefault();
-				const state = this.getState('hypervisors');
-				state.search = cluster.dataset.vmwareMonitoringCluster || '';
-				state.page = 1;
-				this.activateTab('hypervisors');
-				return;
-			}
-
 			const sort = event.target.closest('[data-vmware-monitoring-sort]');
 			if (sort) {
 				this.sortTab(sort.dataset.vmwareMonitoringSort);

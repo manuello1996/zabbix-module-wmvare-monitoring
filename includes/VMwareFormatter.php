@@ -22,6 +22,19 @@ class VMwareFormatter {
 			: number_format((float) $value, $decimals).'%';
 	}
 
+	public static function hertz($value, int $decimals = 1): string {
+		if ($value === null || $value === '') {
+			return '-';
+		}
+
+		$hertz = max(0, (float) $value);
+		$units = ['Hz', 'kHz', 'MHz', 'GHz', 'THz'];
+		$power = $hertz > 0 ? min((int) floor(log($hertz, 1000)), count($units) - 1) : 0;
+		$number = $hertz / (1000 ** $power);
+
+		return number_format($number, $power === 0 ? 0 : $decimals).' '.$units[$power];
+	}
+
 	public static function duration($seconds): string {
 		if ($seconds === null || $seconds === '') {
 			return '-';

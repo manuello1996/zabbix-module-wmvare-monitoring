@@ -141,13 +141,14 @@ foreach ([
 	['clusters', _('Clusters')],
 	['alarms', _('Alarms')]
 ] as $index => [$key, $label]) {
+	$active = $key === $data['initial_tab'];
 	$tabs[] = (new CSpan($label))
 		->addClass('vmware-monitoring-tab')
-		->addClass($index === 0 ? 'vmware-monitoring-tab-active' : null)
+		->addClass($active ? 'vmware-monitoring-tab-active' : null)
 		->setAttribute('data-vmware-monitoring-tab', $key)
 		->setAttribute('role', 'tab')
 		->setAttribute('tabindex', '0')
-		->setAttribute('aria-selected', $index === 0 ? 'true' : 'false');
+		->setAttribute('aria-selected', $active ? 'true' : 'false');
 }
 $page->addItem((new CDiv($tabs))->addClass('vmware-monitoring-tabs')->setAttribute('role', 'tablist'));
 
@@ -163,5 +164,7 @@ $page->addItem(
 $page->show();
 
 (new CScriptTag('vmware_monitoring.init('.json_encode([
-	'hostid' => $data['host']['hostid']
+	'hostid' => $data['host']['hostid'],
+	'tab' => $data['initial_tab'],
+	'search' => $data['initial_search']
 ]).');'))->setOnDocumentReady()->show();

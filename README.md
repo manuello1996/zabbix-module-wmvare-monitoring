@@ -12,7 +12,9 @@ the Zabbix API with the permissions of the logged-in user.
 - vCenter health, product/version, active problems and discovered-object totals
 - Reliable vCenter-to-object correlation using the Zabbix low-level discovery rule that created each
   hypervisor and VM host
-- Cluster summary with hypervisor count, VM count and physical-memory utilization
+- Cluster summary and detail page with native tags, stable cluster
+  properties and cluster-service counters, hypervisor/VM inventory, CPU and memory capacity, storage, sensor,
+  network, power and problem rollups, plus an estimated N+1 headroom calculation
 - Discovered hypervisor table:
   - datacenter and cluster placement
   - connection and health states
@@ -59,8 +61,26 @@ vCenter because they do not have an originating discovery rule.
 4. Enable **VMware Monitoring**.
 5. Open **Monitoring → VMware**.
 
+Import the included `vmware.yml` when upgrading an existing installation. Its cluster discovery now
+creates the cluster-native property, tag and performance-counter items used by the detail
+page. Values remain unavailable until the next cluster discovery and first item collection.
+
 The overview detects vCenter hosts through the monitored
 `vmware.version[{$VMWARE.URL}]` item supplied by the official `VMware` template.
+
+## Optional DVSwitch template
+
+Import `vmware_dvswitch.yml` to add vSphere Distributed Switch and DVPort monitoring. The import
+contains two cooperating templates:
+
+- **VMware DVSwitch discovery** is linked to the vCenter host and creates one host per discovered
+  DVSwitch.
+- **VMware DVSwitch** is linked automatically to those hosts and derives port state, traffic,
+  drops, exceptions and metadata from one `vmware.dvswitch.fetchports.get` master item per switch.
+
+The default port filter is `active:true`. Adjust `{$VMWARE.DVSWITCH.PORT.FILTER}` using the
+`DistributedVirtualSwitchPortCriteria` fields when uplink, port group, host, connected-state or NSX
+filtering is required.
 
 ## Test notes
 
