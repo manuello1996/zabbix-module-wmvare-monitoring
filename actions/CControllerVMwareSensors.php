@@ -91,16 +91,44 @@ class CControllerVMwareSensors extends CController {
 				|| ($sensor['state'] !== ITEM_STATE_NOTSUPPORTED && $value === $status_filter);
 		}));
 
+		$group_summaries = [];
+		$state_priorities = ['1' => 0, '0' => 1, '2' => 2, 'unsupported' => 3, '3' => 4];
+		foreach ($sensors as $sensor) {
+			$type = trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other');
+			$state = $sensor['state'] === ITEM_STATE_NOTSUPPORTED
+				? 'unsupported'
+				: (in_array((string) $sensor['value'], ['0', '1', '2', '3'], true)
+					? (string) $sensor['value']
+					: '0');
+			if (!isset($group_summaries[$type])) {
+				$group_summaries[$type] = ['count' => 0, 'state' => '1'];
+			}
+			$group_summaries[$type]['count']++;
+			if ($state_priorities[$state] > $state_priorities[$group_summaries[$type]['state']]) {
+				$group_summaries[$type]['state'] = $state;
+			}
+		}
+
 		usort($sensors, static function (array $a, array $b) use ($sort, $sortorder): int {
+			$type_result = strcasecmp(
+				trim($a['type']) !== '' ? $a['type'] : _('Other'),
+				trim($b['type']) !== '' ? $b['type'] : _('Other')
+			);
+			if ($sort === 'type') {
+				$type_result = $sortorder === ZBX_SORT_DOWN ? -$type_result : $type_result;
+				return $type_result !== 0 ? $type_result : strcasecmp($a['name'], $b['name']);
+			}
+			if ($type_result !== 0) {
+				return $type_result;
+			}
+
 			$left = match ($sort) {
-				'type' => mb_strtolower($a['type']),
 				'status' => (int) ($a['value'] ?? -1),
 				'lastclock' => $a['lastclock'],
 				'problems' => count($a['problems']),
 				default => mb_strtolower($a['name'])
 			};
 			$right = match ($sort) {
-				'type' => mb_strtolower($b['type']),
 				'status' => (int) ($b['value'] ?? -1),
 				'lastclock' => $b['lastclock'],
 				'problems' => count($b['problems']),
@@ -128,6 +156,7 @@ class CControllerVMwareSensors extends CController {
 			'host' => $this->host,
 			'sensors' => $sensors,
 			'counts' => $counts,
+			'group_summaries' => $group_summaries,
 			'filter' => ['name' => $search, 'status' => $status_filter],
 			'sort' => $sort,
 			'sortorder' => $sortorder,

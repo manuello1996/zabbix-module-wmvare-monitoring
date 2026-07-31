@@ -2,6 +2,8 @@
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 
+$this->includeJsFile('vmware.monitoring.sensors.js.php');
+
 $page = (new CHtmlPage())
 	->setTitle(_('VMware sensors'))
 	->setWebLayoutMode(CViewHelper::loadLayoutMode());
@@ -88,21 +90,7 @@ $sort_header = static function (string $label, string $field) use ($data): CLink
 	return new CLink($label, $url);
 };
 
-$table = (new CTableInfo())
-	->setId('vmware-monitoring-sensors-table')
-	->setHeader([
-		$sort_header(_('Sensor'), 'name'),
-		$sort_header(_('Type'), 'type'),
-		$sort_header(_('VMware status'), 'status'),
-		$sort_header(_('Last update'), 'lastclock'),
-		_('Collection'),
-		$sort_header(_('Related problems'), 'problems')
-	])
-	->setNoDataMessage(
-		_('No discovered sensors found. Enable {$VMWARE.HV.SENSOR.DISCOVERY} on this hypervisor and wait for discovery.')
-	);
-
-foreach ($data['sensors'] as $sensor) {
+$make_sensor_row = static function (array $sensor) use ($data): array {
 	$state = VMwareFormatter::hypervisorHealth($sensor['value']);
 	$history_url = (new CUrl('history.php'))
 		->setArgument('action', HISTORY_VALUES)
@@ -136,16 +124,84 @@ foreach ($data['sensors'] as $sensor) {
 	$row_state = $sensor['state'] === ITEM_STATE_NOTSUPPORTED
 		? 'unsupported'
 		: ($sensor['value'] === null ? '0' : (string) $sensor['value']);
-	$table->addRow([
+
+	return [[
 		(new CLink($sensor['name'], $history_url))->addClass('vmware-monitoring-name'),
-		$sensor['type'] !== '' ? $sensor['type'] : '-',
 		(new CSpan($state['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$state['kind']),
 		$sensor['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, $sensor['lastclock']) : '-',
 		$collection,
 		$problems
-	], $row_state !== '1' ? 'vmware-monitoring-sensor-state-'.$row_state : null);
+	], $row_state !== '1' ? 'vmware-monitoring-sensor-state-'.$row_state : null];
+};
+
+$groups = [];
+foreach ($data['sensors'] as $sensor) {
+	$type = trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other');
+	$groups[$type][] = $sensor;
+}
+
+$group_content = [];
+foreach ($groups as $group_index => $sensors) {
+	$summary = $data['group_summaries'][$group_index] ?? ['count' => count($sensors), 'state' => '0'];
+	$group_state = match ($summary['state']) {
+		'1' => ['text' => _('Green'), 'kind' => 'running'],
+		'2' => ['text' => _('Yellow'), 'kind' => 'paused'],
+		'3' => ['text' => _('Red'), 'kind' => 'stopped'],
+		'unsupported' => ['text' => _('Unsupported'), 'kind' => 'stopped'],
+		default => ['text' => _('Gray'), 'kind' => 'unknown']
+	};
+
+	$open = $group_state['kind'] !== 'running'
+		|| $data['filter']['name'] !== ''
+		|| $data['filter']['status'] !== 'all';
+	$body_id = 'vmware-monitoring-sensor-group-'.count($group_content);
+	$table = (new CTableInfo())
+		->addClass('vmware-monitoring-sensors-table')
+		->setHeader([
+			$sort_header(_('Sensor'), 'name'),
+			$sort_header(_('VMware status'), 'status'),
+			$sort_header(_('Last update'), 'lastclock'),
+			_('Collection'),
+			$sort_header(_('Related problems'), 'problems')
+		]);
+	foreach ($sensors as $sensor) {
+		[$row, $row_class] = $make_sensor_row($sensor);
+		$table->addRow($row, $row_class);
+	}
+
+	$header = (new CTag('button', true, [
+		(new CSpan())->addClass('vmware-monitoring-graphgroup-caret'),
+		(new CSpan($group_index))->addClass('vmware-monitoring-graphgroup-name'),
+		(new CSpan(_n('%1$d sensor', '%1$d sensors', $summary['count'])))
+			->addClass('vmware-monitoring-graphgroup-count'),
+		(new CSpan($group_state['text']))
+			->addClass('vmware-monitoring-state')
+			->addClass('vmware-monitoring-state-'.$group_state['kind'])
+	]))
+		->addClass('vmware-monitoring-graphgroup-head')
+		->setAttribute('type', 'button')
+		->setAttribute('data-vmware-monitoring-sensor-group', '1')
+		->setAttribute('aria-controls', $body_id)
+		->setAttribute('aria-expanded', $open ? 'true' : 'false');
+	$body = (new CDiv($table))
+		->setId($body_id)
+		->addClass('vmware-monitoring-graphgroup-body');
+	if (!$open) {
+		$body->setAttribute('hidden', 'hidden');
+	}
+
+	$group_content[] = (new CDiv([$header, $body]))
+		->addClass('vmware-monitoring-graphgroup')
+		->addClass('vmware-monitoring-sensor-group')
+		->addClass($open ? 'vmware-monitoring-graphgroup-open' : null);
+}
+
+if (!$group_content) {
+	$group_content[] = (new CTableInfo())->setNoDataMessage(
+		_('No discovered sensors found. Enable {$VMWARE.HV.SENSOR.DISCOVERY} on this hypervisor and wait for discovery.')
+	);
 }
 
 $page
@@ -153,8 +209,10 @@ $page
 		(new CDiv([
 			(new CTag('h4', true, _('Discovered hypervisor sensors')))
 				->addClass('vmware-monitoring-section-title'),
-			$table,
+			...$group_content,
 			$data['paging']
 		]))->addClass('vmware-monitoring-section')
 	)
 	->show();
+
+(new CScriptTag('vmware_monitoring_sensors.init();'))->setOnDocumentReady()->show();

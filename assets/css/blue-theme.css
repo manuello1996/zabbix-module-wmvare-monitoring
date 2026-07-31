@@ -688,7 +688,7 @@
 #vmware-monitoring-table thead th,
 #vmware-monitoring-nodes-table thead th,
 #vmware-monitoring-vcenters-table thead th,
-#vmware-monitoring-sensors-table thead th {
+.vmware-monitoring-sensors-table thead th {
 	font-size: 11px;
 	letter-spacing: .06em;
 	text-transform: uppercase;
@@ -699,7 +699,7 @@
 #vmware-monitoring-table tbody td,
 #vmware-monitoring-nodes-table tbody td,
 #vmware-monitoring-vcenters-table tbody td,
-#vmware-monitoring-sensors-table tbody td {
+.vmware-monitoring-sensors-table tbody td {
 	padding-top: 12px;
 	padding-bottom: 12px;
 	vertical-align: middle;
@@ -1452,6 +1452,19 @@
 	flex-direction: column;
 	gap: 3px;
 	max-width: 420px;
+}
+
+.vmware-monitoring-sensors-table {
+	margin: 0;
+}
+
+.vmware-monitoring-sensors-table .vmware-monitoring-name {
+	padding-left: 18px;
+}
+
+.vmware-monitoring-sensor-group .vmware-monitoring-graphgroup-head .vmware-monitoring-state {
+	min-width: 85px;
+	text-align: left;
 }
 
 .vmware-monitoring-refresh-status {
