@@ -14,14 +14,14 @@ the Zabbix API with the permissions of the logged-in user.
   hypervisor and VM host
 - Cluster summary and detail page with native tags, stable cluster
   properties and cluster-service counters, hypervisor/VM inventory, CPU and memory capacity, storage, sensor,
-  network, power and problem rollups, plus an estimated N+1 headroom calculation
+  network, power and problem rollups
 - Discovered hypervisor table:
   - datacenter and cluster placement
   - connection and health states
   - CPU history sparkline and memory utilization
   - VM count, uptime, version and active problems
   - a Sensors action showing discovered hardware sensors, latest mapped VMware state, collection
-    errors and related active problems
+    errors and related active problems in one paginated table with multi-type checkbox filtering
 - Discovered virtual machine table:
   - hypervisor, datacenter and cluster placement
   - power and runtime state

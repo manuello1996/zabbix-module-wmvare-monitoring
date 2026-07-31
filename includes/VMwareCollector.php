@@ -211,6 +211,42 @@ class VMwareCollector {
 		return $result;
 	}
 
+	public static function vcenterForDiscoveredHost(string $hostid): ?array {
+		$discovered = DB::select('host_discovery', [
+			'output' => ['parent_hostid'],
+			'filter' => ['hostid' => [$hostid]]
+		]);
+		if (!$discovered) {
+			return null;
+		}
+
+		$prototypeid = (string) reset($discovered)['parent_hostid'];
+		$prototypes = DB::select('host_discovery', [
+			'output' => ['parent_itemid'],
+			'filter' => ['hostid' => [$prototypeid]]
+		]);
+		if (!$prototypes) {
+			return null;
+		}
+
+		$ruleid = (string) reset($prototypes)['parent_itemid'];
+		$rules = API::DiscoveryRule()->get([
+			'output' => ['hostid', 'key_'],
+			'itemids' => [$ruleid]
+		]) ?: [];
+		if (!$rules || (string) reset($rules)['key_'] !== 'vmware.hv.discovery[{$VMWARE.URL}]') {
+			return null;
+		}
+
+		$vcenter_hostid = (string) reset($rules)['hostid'];
+		$hosts = API::Host()->get([
+			'output' => ['hostid', 'name'],
+			'hostids' => [$vcenter_hostid]
+		]) ?: [];
+
+		return $hosts ? reset($hosts) : null;
+	}
+
 	public static function hypervisorsPage(string $vcenter_hostid, int $page, int $per_page,
 			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
 		$topology = self::discoveredTopology($vcenter_hostid, true, false);
@@ -528,7 +564,6 @@ class VMwareCollector {
 		}
 		$complete = ['cpu_capacity' => (bool) $hypervisors, 'cpu_used' => (bool) $hypervisors,
 			'memory_total' => (bool) $hypervisors, 'memory_used' => (bool) $hypervisors];
-		$largest = ['cpu_capacity' => 0.0, 'memory_total' => 0.0];
 
 		foreach ($hypervisors as $hostid => &$host) {
 			$m = $host['metrics'];
@@ -570,12 +605,6 @@ class VMwareCollector {
 				else {
 					$totals[$field] += (float) $m[$field];
 				}
-			}
-			if ($m['cpu_capacity'] !== null) {
-				$largest['cpu_capacity'] = max($largest['cpu_capacity'], (float) $m['cpu_capacity']);
-			}
-			if ($m['memory_total'] !== null) {
-				$largest['memory_total'] = max($largest['memory_total'], (float) $m['memory_total']);
 			}
 		}
 		unset($host);
@@ -650,20 +679,8 @@ class VMwareCollector {
 			'memory_utilization' => $complete['memory_total'] && $complete['memory_used']
 					&& $totals['memory_total'] > 0
 				? $totals['memory_used'] / $totals['memory_total'] * 100
-				: null,
-			'cpu_after_loss' => null, 'memory_after_loss' => null,
-			'cpu_headroom' => null, 'memory_headroom' => null
+				: null
 		];
-		$n_plus_one = !$is_standalone && count($hypervisors) === 1 ? false : null;
-		if (!$is_standalone && count($hypervisors) >= 1
-				&& !in_array(false, $complete, true)) {
-			$capacity['cpu_after_loss'] = $totals['cpu_capacity'] - $largest['cpu_capacity'];
-			$capacity['memory_after_loss'] = $totals['memory_total'] - $largest['memory_total'];
-			$capacity['cpu_headroom'] = $capacity['cpu_after_loss'] - $totals['cpu_used'];
-			$capacity['memory_headroom'] = $capacity['memory_after_loss'] - $totals['memory_used'];
-			$n_plus_one = count($hypervisors) >= 2
-				&& $capacity['cpu_headroom'] >= 0 && $capacity['memory_headroom'] >= 0;
-		}
 
 		$native = [];
 		if (!$is_standalone) {
@@ -719,7 +736,6 @@ class VMwareCollector {
 			'totals' => $totals,
 			'complete' => $complete,
 			'capacity' => $capacity,
-			'n_plus_one' => $n_plus_one,
 			'native' => $native,
 			'discovered_vms' => $discovered_vms,
 			'datastores' => $datastores,

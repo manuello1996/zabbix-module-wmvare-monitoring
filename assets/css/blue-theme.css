@@ -373,83 +373,6 @@
 	vertical-align: middle;
 }
 
-.vmware-monitoring-graphgroup {
-	margin-bottom: 10px;
-	background-color: var(--vmware-monitoring-card-bg);
-	border: 1px solid var(--vmware-monitoring-card-border);
-	border-radius: 8px;
-	overflow: hidden;
-}
-
-.vmware-monitoring-graphgroup-head {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	box-sizing: border-box;
-	width: 100%;
-	height: auto;
-	min-height: 38px;
-	padding: 10px 14px;
-	border: 0;
-	background: none;
-	color: var(--vmware-monitoring-text);
-	font-size: 13px;
-	line-height: 1.3;
-	text-align: left;
-	cursor: pointer;
-}
-
-.vmware-monitoring-graphgroup-head:hover {
-	background-color: var(--vmware-monitoring-surface-muted);
-}
-
-.vmware-monitoring-graphgroup-head:focus-visible {
-	outline: 2px solid var(--vmware-monitoring-accent);
-	outline-offset: -2px;
-}
-
-.vmware-monitoring-graphgroup-caret {
-	flex: 0 0 auto;
-	width: 0;
-	height: 0;
-	border-left: 5px solid var(--vmware-monitoring-text-muted);
-	border-top: 4px solid transparent;
-	border-bottom: 4px solid transparent;
-	transition: transform .15s ease;
-}
-
-.vmware-monitoring-graphgroup-open .vmware-monitoring-graphgroup-caret {
-	transform: rotate(90deg);
-}
-
-.vmware-monitoring-graphgroup-name {
-	font-weight: 600;
-	font-size: 12.5px;
-	color: var(--vmware-monitoring-text);
-}
-
-.vmware-monitoring-graphgroup-count {
-	margin-left: auto;
-	padding: 1px 8px;
-	border-radius: 999px;
-	background-color: var(--vmware-monitoring-surface-muted);
-	color: var(--vmware-monitoring-text-muted);
-	font-size: 11px;
-	font-variant-numeric: tabular-nums;
-}
-
-.vmware-monitoring-graphgroup-body {
-	padding: 8px 14px 12px;
-	border-top: 1px solid var(--vmware-monitoring-card-border);
-}
-
-.vmware-monitoring-graphs-count {
-	margin-left: auto;
-	font-size: 12.5px;
-	color: var(--vmware-monitoring-text-muted);
-	font-variant-numeric: tabular-nums;
-}
-
 .vmware-monitoring-topo-summary {
 	margin-bottom: 14px;
 	font-size: 12.5px;
@@ -687,8 +610,7 @@
 
 #vmware-monitoring-table thead th,
 #vmware-monitoring-nodes-table thead th,
-#vmware-monitoring-vcenters-table thead th,
-.vmware-monitoring-sensors-table thead th {
+#vmware-monitoring-vcenters-table thead th {
 	font-size: 11px;
 	letter-spacing: .06em;
 	text-transform: uppercase;
@@ -698,8 +620,7 @@
 
 #vmware-monitoring-table tbody td,
 #vmware-monitoring-nodes-table tbody td,
-#vmware-monitoring-vcenters-table tbody td,
-.vmware-monitoring-sensors-table tbody td {
+#vmware-monitoring-vcenters-table tbody td {
 	padding-top: 12px;
 	padding-bottom: 12px;
 	vertical-align: middle;
@@ -1030,29 +951,6 @@
 	margin-top: 12px;
 }
 
-.vmware-monitoring-compose-project > .vmware-monitoring-graphgroup-head {
-	flex-wrap: wrap;
-}
-
-.vmware-monitoring-compose-project > .vmware-monitoring-graphgroup-head .vmware-monitoring-graphgroup-name {
-	flex: 1 1 140px;
-	min-width: 0;
-	overflow-wrap: anywhere;
-}
-
-.vmware-monitoring-compose-project > .vmware-monitoring-graphgroup-head .vmware-monitoring-status-running,
-.vmware-monitoring-compose-project > .vmware-monitoring-graphgroup-head .vmware-monitoring-status-stopped {
-	white-space: nowrap;
-}
-
-.vmware-monitoring-compose-project > .vmware-monitoring-graphgroup-head .vmware-monitoring-graphgroup-count {
-	margin-left: 0;
-}
-
-.vmware-monitoring-compose-project .vmware-monitoring-graphgroup-body {
-	overflow-x: auto;
-}
-
 .vmware-monitoring-compose-project-summary {
 	color: var(--vmware-monitoring-text-muted);
 	font-size: 11.5px;
@@ -1073,13 +971,6 @@
 .vmware-monitoring-compose-container {
 	margin-left: 8px;
 	margin-bottom: 8px;
-}
-
-.vmware-monitoring-compose-container .vmware-monitoring-graphgroup-head {
-	flex-wrap: wrap;
-	height: auto;
-	padding-top: 9px;
-	padding-bottom: 9px;
 }
 
 .vmware-monitoring-compose-container-actions {
@@ -1454,30 +1345,11 @@
 	max-width: 420px;
 }
 
-.vmware-monitoring-sensors-table {
-	margin: 0;
-}
-
-.vmware-monitoring-sensors-table .vmware-monitoring-name {
-	padding-left: 18px;
-}
-
-.vmware-monitoring-sensor-group .vmware-monitoring-graphgroup-head .vmware-monitoring-state {
-	min-width: 85px;
-	text-align: left;
-}
-
 .vmware-monitoring-capacity-cell {
 	display: grid;
 	grid-template-columns: 58px minmax(80px, 150px);
 	align-items: center;
 	gap: 10px;
-}
-
-.vmware-monitoring-capacity-note {
-	margin-top: 10px;
-	color: var(--vmware-monitoring-text-muted);
-	font-size: 11.5px;
 }
 
 .vmware-monitoring-refresh-status {

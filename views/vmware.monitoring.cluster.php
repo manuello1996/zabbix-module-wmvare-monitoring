@@ -4,6 +4,10 @@ use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareTabRenderer;
 
 $cluster = $data['cluster'];
+$vcenter_url = (new CUrl('zabbix.php'))
+	->setArgument('action', 'vmware.monitoring.view')
+	->setArgument('filter_hostid', [$data['vcenter']['hostid']])
+	->setArgument('filter_set', 1);
 $clusters_url = (new CUrl('zabbix.php'))
 	->setArgument('action', 'vmware.monitoring.view')
 	->setArgument('filter_hostid', [$data['vcenter']['hostid']])
@@ -34,7 +38,9 @@ $page->addItem(
 		(new CDiv([
 			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
-			new CLink($data['vcenter']['name'], $clusters_url),
+			new CLink($data['vcenter']['name'], $vcenter_url),
+			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
+			new CLink(_('Clusters'), $clusters_url),
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			(new CSpan($cluster['name']))->addClass('vmware-monitoring-breadcrumb-current')
 		]))->addClass('vmware-monitoring-breadcrumb'),
@@ -64,19 +70,6 @@ if ($cluster['totals']['problems'] > 0) {
 	);
 }
 
-if ($cluster['is_standalone']) {
-	$n_plus_one = ['text' => _('Not applicable'), 'modifier' => 'total'];
-}
-elseif ($cluster['n_plus_one'] === true) {
-	$n_plus_one = ['text' => _('Ready'), 'modifier' => 'running'];
-}
-elseif ($cluster['n_plus_one'] === false) {
-	$n_plus_one = ['text' => _('At risk'), 'modifier' => 'stopped'];
-}
-else {
-	$n_plus_one = ['text' => _('Unknown'), 'modifier' => 'total'];
-}
-
 $page->addItem(
 	(new CDiv([
 		$make_stat('nodes', _('Hypervisors'),
@@ -96,19 +89,10 @@ $page->addItem(
 		),
 		$make_stat($cluster['totals']['problems'] > 0 ? 'stopped' : 'total', _('Active problems'),
 			(new CSpan($problem_value))->addClass('vmware-monitoring-card-value')
-		),
-		$make_stat($n_plus_one['modifier'], _('Estimated N+1'),
-			(new CSpan($n_plus_one['text']))->addClass('vmware-monitoring-card-value')
 		)
 	]))->addClass('vmware-monitoring-statstrip')
 );
 
-$format_signed_hertz = static function ($value): string {
-	return $value === null ? '-' : ((float) $value < 0 ? '−' : '').VMwareFormatter::hertz(abs((float) $value));
-};
-$format_signed_bytes = static function ($value): string {
-	return $value === null ? '-' : ((float) $value < 0 ? '−' : '').VMwareFormatter::bytes(abs((float) $value));
-};
 $utilization = static function ($value) {
 	if ($value === null) {
 		return '-';
@@ -125,39 +109,37 @@ $utilization = static function ($value) {
 };
 
 $capacity_table = (new CTableInfo())->setHeader([
-	_('Resource'), _('Total capacity'), _('Current use'), _('Utilization'),
-	_('Capacity after largest host loss'), _('Headroom after loss')
+	_('Resource'), _('Total capacity'), _('Current use'), _('Utilization')
 ]);
 $capacity_table->addRow([
 	_('CPU'),
 	$cluster['complete']['cpu_capacity'] ? VMwareFormatter::hertz($cluster['totals']['cpu_capacity']) : '-',
 	$cluster['complete']['cpu_used'] ? VMwareFormatter::hertz($cluster['totals']['cpu_used']) : '-',
-	$utilization($cluster['capacity']['cpu_utilization']),
-	VMwareFormatter::hertz($cluster['capacity']['cpu_after_loss']),
-	$format_signed_hertz($cluster['capacity']['cpu_headroom'])
+	$utilization($cluster['capacity']['cpu_utilization'])
 ]);
 $capacity_table->addRow([
 	_('Memory'),
 	$cluster['complete']['memory_total'] ? VMwareFormatter::bytes($cluster['totals']['memory_total']) : '-',
 	$cluster['complete']['memory_used'] ? VMwareFormatter::bytes($cluster['totals']['memory_used']) : '-',
-	$utilization($cluster['capacity']['memory_utilization']),
-	VMwareFormatter::bytes($cluster['capacity']['memory_after_loss']),
-	$format_signed_bytes($cluster['capacity']['memory_headroom'])
+	$utilization($cluster['capacity']['memory_utilization'])
 ]);
 
 $page->addItem(
 	(new CDiv([
 		(new CTag('h4', true, _('Cluster capacity')))->addClass('vmware-monitoring-section-title'),
-		$capacity_table,
-		(new CDiv(_(
-			'N+1 is an estimate based on current CPU and memory usage after removing the largest host capacity. '.
-			'It does not include reservations, limits or configured placement and availability policies.'
-		)))->addClass('vmware-monitoring-capacity-note')
+		$capacity_table
 	]))->addClass('vmware-monitoring-section')
 );
 
 $native_value = static function (string $field, array $item): string {
 	$value = $item['value'];
+	if (in_array($field, [
+		'summary.totalCpu',
+		'summary.effectiveCpu',
+		'perf:"clusterServices/effectivecpu[average]"'
+	], true)) {
+		return number_format((float) $value / 1000, 2).' GHz';
+	}
 	if ($field === 'tags') {
 		$decoded = json_decode($value, true);
 		if (is_array($decoded)) {
@@ -184,10 +166,7 @@ $native_value = static function (string $field, array $item): string {
 };
 
 $native_table = (new CTableInfo())
-	->setHeader([_('VMware cluster property'), _('Value'), _('Last update')])
-	->setNoDataMessage(_(
-		'No cluster-native values are available yet. Import the updated template and wait for cluster discovery.'
-	));
+	->setHeader([_('VMware cluster property'), _('Value'), _('Last update')]);
 foreach ($cluster['native'] as $field => $item) {
 	$label = preg_replace('/^Cluster \[[^\]]+\] /', '', $item['name']);
 	$native_table->addRow([
@@ -196,53 +175,58 @@ foreach ($cluster['native'] as $field => $item) {
 		$item['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, $item['lastclock']) : '-'
 	]);
 }
-$page->addItem(
-	(new CDiv([
-		(new CTag('h4', true, _('VMware cluster configuration and counters')))
-			->addClass('vmware-monitoring-section-title'),
-		$native_table
-	]))->addClass('vmware-monitoring-section')
-);
-
-$runtime_table = (new CTableInfo())->setHeader([_('Calculated information'), _('Value')]);
-$known = static fn(string $field): bool => ($cluster['totals']['known'][$field] ?? 0) > 0;
-$runtime_rows = [
-	[_('CPU cores / threads'), $known('cpu_cores') && $known('cpu_threads')
-		? number_format((float) $cluster['totals']['cpu_cores']).' / '.
-			number_format((float) $cluster['totals']['cpu_threads']) : '-'],
-	[_('Memory ballooned'), $known('memory_ballooned')
-		? VMwareFormatter::bytes($cluster['totals']['memory_ballooned']) : '-'],
-	[_('Network received / sent'), $known('network_in') && $known('network_out')
-		? VMwareFormatter::bytes($cluster['totals']['network_in']).'/s / '.
-			VMwareFormatter::bytes($cluster['totals']['network_out']).'/s' : '-'],
-	[_('Network packets dropped (in / out)'), $known('network_dropped_in') && $known('network_dropped_out')
-		? number_format((float) $cluster['totals']['network_dropped_in']).' / '.
-			number_format((float) $cluster['totals']['network_dropped_out']) : '-'],
-	[_('Network errors (in / out)'), $known('network_errors_in') && $known('network_errors_out')
-		? number_format((float) $cluster['totals']['network_errors_in']).' / '.
-			number_format((float) $cluster['totals']['network_errors_out']) : '-'],
-	[_('Current / maximum power'), $known('power') && $known('power_max')
-		? number_format((float) $cluster['totals']['power'], 1).' W / '.
-			number_format((float) $cluster['totals']['power_max'], 1).' W' : '-'],
-	[_('Lowest host uptime'), VMwareFormatter::duration($cluster['totals']['minimum_uptime'])],
-	[_('Unique datastores / attachments'), $cluster['datastore_totals']['count'].' / '.
-		$cluster['datastore_totals']['attachments']],
-	[_('Datastore capacity / calculated free'), VMwareFormatter::bytes($cluster['datastore_totals']['capacity']).' / '.
-		VMwareFormatter::bytes($cluster['datastore_totals']['free'])],
-	[_('Lowest datastore free space'), VMwareFormatter::percent($cluster['datastore_totals']['lowest_free_pct'])],
-	[_('Discovered hardware sensors'), (string) $cluster['sensors']['total']]
-];
-foreach ($runtime_rows as $row) {
-	$runtime_table->addRow($row);
+if ($cluster['native']) {
+	$page->addItem(
+		(new CDiv([
+			(new CTag('h4', true, _('VMware cluster configuration and counters')))
+				->addClass('vmware-monitoring-section-title'),
+			$native_table
+		]))->addClass('vmware-monitoring-section')
+	);
 }
-$page->addItem(
-	(new CDiv([
-		(new CTag('h4', true, _('Calculated cluster information')))->addClass('vmware-monitoring-section-title'),
-		$runtime_table
-	]))->addClass('vmware-monitoring-section')
-);
 
-$distribution_table = (new CTableInfo())->setHeader([_('Distribution'), _('Values')]);
+if (!$cluster['native']) {
+	$runtime_table = (new CTableInfo())->setHeader([_('Calculated information'), _('Value')]);
+	$known = static fn(string $field): bool => ($cluster['totals']['known'][$field] ?? 0) > 0;
+	$runtime_rows = [
+		[_('CPU cores / threads'), $known('cpu_cores') && $known('cpu_threads')
+			? number_format((float) $cluster['totals']['cpu_cores']).' / '.
+				number_format((float) $cluster['totals']['cpu_threads']) : '-'],
+		[_('Memory ballooned'), $known('memory_ballooned')
+			? VMwareFormatter::bytes($cluster['totals']['memory_ballooned']) : '-'],
+		[_('Network received / sent'), $known('network_in') && $known('network_out')
+			? VMwareFormatter::bytes($cluster['totals']['network_in']).'/s / '.
+				VMwareFormatter::bytes($cluster['totals']['network_out']).'/s' : '-'],
+		[_('Network packets dropped (in / out)'), $known('network_dropped_in') && $known('network_dropped_out')
+			? number_format((float) $cluster['totals']['network_dropped_in']).' / '.
+				number_format((float) $cluster['totals']['network_dropped_out']) : '-'],
+		[_('Network errors (in / out)'), $known('network_errors_in') && $known('network_errors_out')
+			? number_format((float) $cluster['totals']['network_errors_in']).' / '.
+				number_format((float) $cluster['totals']['network_errors_out']) : '-'],
+		[_('Current / maximum power'), $known('power') && $known('power_max')
+			? number_format((float) $cluster['totals']['power'], 1).' W / '.
+				number_format((float) $cluster['totals']['power_max'], 1).' W' : '-'],
+		[_('Lowest host uptime'), VMwareFormatter::duration($cluster['totals']['minimum_uptime'])],
+		[_('Unique datastores / attachments'), $cluster['datastore_totals']['count'].' / '.
+			$cluster['datastore_totals']['attachments']],
+		[_('Datastore capacity / calculated free'), VMwareFormatter::bytes($cluster['datastore_totals']['capacity']).
+			' / '.VMwareFormatter::bytes($cluster['datastore_totals']['free'])],
+		[_('Lowest datastore free space'), VMwareFormatter::percent($cluster['datastore_totals']['lowest_free_pct'])],
+		[_('Discovered hardware sensors'), (string) $cluster['sensors']['total']]
+	];
+	foreach ($runtime_rows as $row) {
+		$runtime_table->addRow($row);
+	}
+	$page->addItem(
+		(new CDiv([
+			(new CTag('h4', true, _('Calculated cluster information')))
+				->addClass('vmware-monitoring-section-title'),
+			$runtime_table
+		]))->addClass('vmware-monitoring-section')
+	);
+}
+
+$distribution_table = (new CTableInfo())->setHeader([_('Distribution'), _('Detected values (hypervisor count)')]);
 $format_distribution = static function (array $values): string {
 	if (!$values) {
 		return '-';

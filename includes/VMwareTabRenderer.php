@@ -221,34 +221,12 @@ class VMwareTabRenderer {
 				? ['text' => $row['name'] === _('Standalone (no cluster)') ? _('Not applicable') : _('Unknown'),
 					'kind' => 'unknown']
 				: VMwareFormatter::hypervisorHealth($row['status']);
-			$hypervisors_url = (new CUrl('zabbix.php'))
-				->setArgument('action', 'vmware.monitoring.view')
-				->setArgument('filter_hostid', [$row['vcenter_hostid']])
-				->setArgument('filter_set', 1)
-				->setArgument('tab', 'hypervisors')
-				->setArgument('search', $row['name'])
-				->getUrl();
 			$detail_url = (new CUrl('zabbix.php'))
 				->setArgument('action', 'vmware.monitoring.cluster')
 				->setArgument('hostid', $row['vcenter_hostid'])
 				->setArgument('cluster', $row['name'])
 				->getUrl();
-			$cluster_link = (new CLinkAction($row['name']))
-				->addClass('vmware-monitoring-name')
-				->setMenuPopup([
-					'type' => 'submenu',
-					'data' => [
-						'submenu' => [
-							'view' => [
-								'label' => _('View'),
-								'items' => [
-									$hypervisors_url => _('Hypervisors'),
-									$detail_url => _('Details')
-								]
-							]
-						]
-					]
-				]);
+			$cluster_link = (new CLink($row['name'], $detail_url))->addClass('vmware-monitoring-name');
 			$table->addRow([
 				$cluster_link,
 				self::state($status),

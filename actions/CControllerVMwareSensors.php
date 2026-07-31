@@ -14,6 +14,7 @@ use Modules\VMwareMonitoring\Includes\VMwareCollector;
 
 class CControllerVMwareSensors extends CController {
 	private array $host = [];
+	private array $vcenter = [];
 
 	protected function init(): void {
 		$this->disableCsrfValidation();
@@ -24,6 +25,8 @@ class CControllerVMwareSensors extends CController {
 			'hostid' => 'required|db hosts.hostid',
 			'filter_name' => 'string',
 			'filter_status' => 'in all,non_green,unsupported,0,1,2,3',
+			'filter_types' => 'array',
+			'filter_types_present' => 'in 1',
 			'sort' => 'in name,type,status,lastclock,problems',
 			'sortorder' => 'in '.ZBX_SORT_DOWN.','.ZBX_SORT_UP,
 			'page' => 'ge 1'
@@ -49,6 +52,11 @@ class CControllerVMwareSensors extends CController {
 		}
 
 		$this->host = reset($hosts);
+		$vcenter = VMwareCollector::vcenterForDiscoveredHost((string) $this->host['hostid']);
+		if ($vcenter === null) {
+			return false;
+		}
+		$this->vcenter = $vcenter;
 		return true;
 	}
 
@@ -63,7 +71,10 @@ class CControllerVMwareSensors extends CController {
 		$counts = [
 			'total' => count($all_sensors), '0' => 0, '1' => 0, '2' => 0, '3' => 0, 'unsupported' => 0
 		];
+		$type_counts = [];
 		foreach ($all_sensors as $sensor) {
+			$type = trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other');
+			$type_counts[$type] = ($type_counts[$type] ?? 0) + 1;
 			if ($sensor['state'] === ITEM_STATE_NOTSUPPORTED) {
 				$counts['unsupported']++;
 				continue;
@@ -73,9 +84,22 @@ class CControllerVMwareSensors extends CController {
 				: '0';
 			$counts[$key]++;
 		}
+		uksort($type_counts, 'strnatcasecmp');
+		$available_types = array_keys($type_counts);
+		$selected_types = array_values(array_intersect(
+			$available_types,
+			array_map('strval', $this->getInput('filter_types', []))
+		));
+		if (!$this->hasInput('filter_types_present')) {
+			$selected_types = $available_types;
+		}
 
 		$sensors = array_values(array_filter($all_sensors, static function (array $sensor) use ($search,
-				$status_filter): bool {
+				$status_filter, $selected_types): bool {
+			$type = trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other');
+			if (!in_array($type, $selected_types, true)) {
+				return false;
+			}
 			if ($search !== '' && stripos($sensor['name'].' '.$sensor['type'], $search) === false) {
 				return false;
 			}
@@ -91,24 +115,6 @@ class CControllerVMwareSensors extends CController {
 				|| ($sensor['state'] !== ITEM_STATE_NOTSUPPORTED && $value === $status_filter);
 		}));
 
-		$group_summaries = [];
-		$state_priorities = ['1' => 0, '0' => 1, '2' => 2, 'unsupported' => 3, '3' => 4];
-		foreach ($sensors as $sensor) {
-			$type = trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other');
-			$state = $sensor['state'] === ITEM_STATE_NOTSUPPORTED
-				? 'unsupported'
-				: (in_array((string) $sensor['value'], ['0', '1', '2', '3'], true)
-					? (string) $sensor['value']
-					: '0');
-			if (!isset($group_summaries[$type])) {
-				$group_summaries[$type] = ['count' => 0, 'state' => '1'];
-			}
-			$group_summaries[$type]['count']++;
-			if ($state_priorities[$state] > $state_priorities[$group_summaries[$type]['state']]) {
-				$group_summaries[$type]['state'] = $state;
-			}
-		}
-
 		usort($sensors, static function (array $a, array $b) use ($sort, $sortorder): int {
 			$type_result = strcasecmp(
 				trim($a['type']) !== '' ? $a['type'] : _('Other'),
@@ -118,10 +124,6 @@ class CControllerVMwareSensors extends CController {
 				$type_result = $sortorder === ZBX_SORT_DOWN ? -$type_result : $type_result;
 				return $type_result !== 0 ? $type_result : strcasecmp($a['name'], $b['name']);
 			}
-			if ($type_result !== 0) {
-				return $type_result;
-			}
-
 			$left = match ($sort) {
 				'status' => (int) ($a['value'] ?? -1),
 				'lastclock' => $a['lastclock'],
@@ -135,6 +137,9 @@ class CControllerVMwareSensors extends CController {
 				default => mb_strtolower($b['name'])
 			};
 			$result = $left <=> $right;
+			if ($result === 0) {
+				$result = strcasecmp($a['name'], $b['name']) ?: $type_result;
+			}
 			return $sortorder === ZBX_SORT_DOWN ? -$result : $result;
 		});
 
@@ -143,6 +148,8 @@ class CControllerVMwareSensors extends CController {
 			->setArgument('hostid', $hostid)
 			->setArgument('filter_name', $search !== '' ? $search : null)
 			->setArgument('filter_status', $status_filter !== 'all' ? $status_filter : null)
+			->setArgument('filter_types', $selected_types)
+			->setArgument('filter_types_present', 1)
 			->setArgument('sort', $sort)
 			->setArgument('sortorder', $sortorder);
 		$paging = CPagerHelper::paginate(
@@ -154,10 +161,11 @@ class CControllerVMwareSensors extends CController {
 
 		$response = new CControllerResponseData([
 			'host' => $this->host,
+			'vcenter' => $this->vcenter,
 			'sensors' => $sensors,
 			'counts' => $counts,
-			'group_summaries' => $group_summaries,
-			'filter' => ['name' => $search, 'status' => $status_filter],
+			'type_counts' => $type_counts,
+			'filter' => ['name' => $search, 'status' => $status_filter, 'types' => $selected_types],
 			'sort' => $sort,
 			'sortorder' => $sortorder,
 			'paging' => $paging
