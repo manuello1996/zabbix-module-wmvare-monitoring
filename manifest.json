@@ -1,5 +1,6 @@
 {
 	"manifest_version": 2.0,
+	"author": "Manuel Pesenti",
 	"id": "vmware_monitoring",
 	"type": "module",
 	"name": "VMware Monitoring",

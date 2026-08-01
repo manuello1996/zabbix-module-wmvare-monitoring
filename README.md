@@ -1,97 +1,111 @@
-# VMware Monitoring — Zabbix frontend module
+# VMware Monitoring for Zabbix 7.0
 
-A read-only Zabbix 7.0 frontend module that turns the metrics and hosts created by the official
-`VMware` template into a navigable VMware environment overview.
+A read-only Zabbix frontend module that turns the data collected by Zabbix's official VMware
+template into a navigable overview of vCenters, hypervisors, virtual machines, clusters,
+datastores, alarms, and hardware sensors.
 
-The module does not connect to vCenter and does not need VMware credentials. It reads data through
-the Zabbix API with the permissions of the logged-in user.
+The module does not connect to VMware directly. It reads existing monitoring data through the
+Zabbix API and applies the permissions of the signed-in Zabbix user.
 
 ## Features
 
-- Multiple-vCenter overview under **Monitoring → VMware**
-- vCenter health, product/version, active problems and discovered-object totals
-- Reliable vCenter-to-object correlation using the Zabbix low-level discovery rule that created each
-  hypervisor and VM host
-- Cluster summary and detail page with native tags, stable cluster
-  properties and cluster-service counters, hypervisor/VM inventory, CPU and memory capacity, storage, sensor,
-  network, power and problem rollups
-- Discovered hypervisor table:
-  - datacenter and cluster placement
-  - connection and health states
-  - CPU history sparkline and memory utilization
-  - VM count, uptime, version and active problems
-  - a Sensors action showing discovered hardware sensors, latest mapped VMware state, collection
-    errors and related active problems in one paginated table with multi-type checkbox filtering
-- Discovered virtual machine table:
-  - hypervisor, datacenter and cluster placement
-  - power and runtime state
-  - CPU history, memory, committed storage, VMware Tools, snapshots and uptime
-  - active problems
-- Datastores per hypervisor:
-  - type, capacity and free percentage
-  - read/write latency and IOPS
-  - multipath count
-- Separate unique-datastore and per-hypervisor attachment views using datastore UUID identity
-- Server-side pagination and filtering for virtual machines and datastore views
-- Lazy-loaded tabs so detailed metrics are requested only when opened
-- VMware-specific tabs for clusters and alarms
-- A combined datastore tab with unique datastores and their per-hypervisor attachments
-- Batched CPU history requests to keep large environments within request-size limits
-- Theme-aware styling for the Zabbix blue and dark themes
-- Active-problem aggregation across the vCenter and its discovered hypervisors and VMs
+- Multi-vCenter overview with health, product, version, hypervisor, VM, datastore, and problem
+  summaries.
+- vCenter detail pages with lazy-loaded tabs, so detailed data is requested only when opened.
+- Hypervisor inventory with:
+  - datacenter and cluster placement;
+  - connection and VMware health state;
+  - active problems linked to **Monitoring → Problems**;
+  - 24-hour CPU history, memory utilization, VM count, uptime, ESXi version, vendor, and model;
+  - quick links to Latest data, Host dashboard, and Sensors.
+- Discovered VM inventory with:
+  - inventory notes and hypervisor, datacenter, and cluster placement;
+  - power and runtime state;
+  - active problems;
+  - 24-hour CPU history, memory, committed storage, VMware Tools, snapshots, and uptime;
+  - quick links to Latest data and Host dashboard.
+- Cluster overview with separate hypervisor-reported and Zabbix-discovered VM counts.
+- Cluster details with current CPU and memory capacity, utilization, hardware/software composition,
+  datastore information, sensor summaries, active problems, and the cluster's hypervisors.
+- Datastore overview with unique datastore identity and per-hypervisor attachments, including
+  capacity, free space, latency, IOPS, and multipath information.
+- Hardware sensor page with VMware value-map states, related problems, collection errors, sorting,
+  and multi-type checkbox filtering.
+- Global VMware alarm view based on the alarm data already collected for the vCenter.
+- Server-side pagination for large VM and datastore inventories. Sensor pagination is applied after
+  its name, status, and type filters.
+- Pagination size follows the **Rows per page** setting in the user's Zabbix profile.
+- Zabbix blue, dark, and high-contrast dark theme support.
+
+## Module scope
+
+This repository contains a frontend module only. It:
+
+- reads hosts, items, history, problems, inventory, tags, and low-level discovery relationships
+  already stored in Zabbix;
+- identifies vCenter hosts by the monitored `vmware.version[{$VMWARE.URL}]` item rather than by a
+  host or template name;
+- associates hypervisors and VMs with the vCenter discovery rule that created them;
+- supports multiple vCenters and respects the current user's Zabbix permissions;
+- does not collect data directly from vCenter, store VMware credentials, create hosts, run VMware
+  discovery, or modify monitored objects;
+- does not replace or bundle the official Zabbix VMware templates.
+
+Hypervisors and VMs must be created by the host prototypes of the official VMware template.
+Manually created hosts linked directly to the hypervisor or guest templates cannot be associated
+reliably with a vCenter because they have no originating discovery relationship.
 
 ## Requirements
 
-| Component | Version |
+| Component | Requirement |
 |---|---|
-| Zabbix server and frontend | 7.0 |
-| PHP | Version supported by the Zabbix 7.0 frontend |
-| Template | Official `VMware` template represented by `vmware.yml` in this repository |
-
-Hypervisors and VMs must be created by the host prototypes in the official template. Manually
-created hosts linked directly to `VMware Hypervisor` or `VMware Guest` are not assigned to a
-vCenter because they do not have an originating discovery rule.
+| Zabbix server | 7.0 |
+| Zabbix frontend | 7.0 |
+| Monitoring | A configured vCenter host using the official Zabbix VMware template |
+| Permissions | Access to Monitoring and Latest data for the VMware hosts the user should see |
 
 ## Installation
 
-1. Place this directory in the Zabbix frontend `modules` directory. The recommended directory name
-   is `vmware_monitoring`.
-2. Make the files readable by the web server.
-3. In Zabbix, open **Administration → General → Modules** and select **Scan directory**.
-4. Enable **VMware Monitoring**.
-5. Open **Monitoring → VMware**.
+1. Download or clone this repository into the Zabbix frontend module directory. A typical path is:
 
-Import the included `vmware.yml` when upgrading an existing installation. Its cluster discovery now
-creates the cluster-native property, tag and performance-counter items used by the detail
-page. Values remain unavailable until the next cluster discovery and first item collection.
+   ```text
+   /usr/share/zabbix/modules/vmware_monitoring
+   ```
 
-The overview detects vCenter hosts through the monitored
-`vmware.version[{$VMWARE.URL}]` item supplied by the official `VMware` template.
+2. Ensure the directory and its files are readable by the web server user.
+3. In Zabbix, open **Administration → General → Modules**.
+4. Select **Scan directory**.
+5. Enable **VMware Monitoring**.
+6. Open **Monitoring → VMware**.
 
-## Optional DVSwitch template
+No Composer, npm, Node.js, compilation, database migration, or additional VMware credentials are
+required. The module is loaded directly by the Zabbix frontend.
 
-Import `vmware_dvswitch.yml` to add vSphere Distributed Switch and DVPort monitoring. The import
-contains two cooperating templates:
+When upgrading, replace the module files, scan the module directory again, and reload the browser
+page. Do not copy the repository's `.git` directory into a packaged production installation.
 
-- **VMware DVSwitch discovery** is linked to the vCenter host and creates one host per discovered
-  DVSwitch.
-- **VMware DVSwitch** is linked automatically to those hosts and derives port state, traffic,
-  drops, exceptions and metadata from one `vmware.dvswitch.fetchports.get` master item per switch.
+## Usage
 
-The default port filter is `active:true`. Adjust `{$VMWARE.DVSWITCH.PORT.FILTER}` using the
-`DistributedVirtualSwitchPortCriteria` fields when uplink, port group, host, connected-state or NSX
-filtering is required.
+1. Configure VMware monitoring with the official Zabbix 7.0 VMware template and wait for its
+   hypervisor and VM discovery rules to create hosts.
+2. Open **Monitoring → VMware** to see every accessible vCenter that has a monitored
+   `vmware.version[{$VMWARE.URL}]` item.
+3. Select a vCenter and use the Overview, Hypervisors, Discovered VMs, Datastores, Clusters, and
+   Alarms tabs.
+4. Select hypervisor or VM names for links to native Zabbix pages. Hypervisor menus also provide
+   access to their sensor details.
+5. Use the filters before paging through large environments. Filter and sort selections are kept
+   when changing pages.
 
-## Test notes
+Hardware sensors appear only when the official template has discovered the corresponding sensor
+items. Enable the `{$VMWARE.HV.SENSOR.DISCOVERY}` macro for the required hypervisors and allow the
+discovery rule and items to collect their first values.
 
-The current development environment does not contain a running Zabbix frontend or PHP CLI. Static
-structure and JSON/JavaScript checks can be performed locally, but the first installation should
-specifically verify:
+Counts labelled **Virtual machines** or **Total VMs** come from the VM totals reported by
+hypervisors. **Discovered VMs** counts only VM hosts created by Zabbix discovery; the two values can
+differ when discovery filters, permissions, or data freshness differ.
 
-- the shape of `host.get` → `selectDiscoveryRule` on the installed Zabbix 7.0 patch level;
-- discovered item tags returned by `item.get` → `selectTags`;
-- vCenter, hypervisor and VM value-map rendering against collected numeric values;
-- behavior with users who have permission to only part of a vCenter's discovered environment.
+## Acknowledgements
 
-If a runtime error occurs, include the Zabbix frontend error text and the related PHP log entry.
-No VMware credentials or secret macro values are needed for troubleshooting.
+Module scaffolding and the original UI/UX approach were based on
+[Monzphere/zabbix-module-docker](https://github.com/Monzphere/zabbix-module-docker).
