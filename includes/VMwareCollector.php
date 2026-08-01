@@ -410,11 +410,15 @@ class VMwareCollector {
 	}
 
 	public static function clusters(string $vcenter_hostid): array {
-		$topology = self::discoveredTopology($vcenter_hostid, true, false);
+		$topology = self::discoveredTopology($vcenter_hostid, true, true);
 		$hv_metrics = self::itemsByKeys(array_keys($topology['hypervisors']), [
 			'vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cluster',
 			'vmware.hv.hw.memory[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_total',
-			'vmware.hv.memory.used[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_used'
+			'vmware.hv.memory.used[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_used',
+			'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count'
+		]);
+		$vm_metrics = self::itemsByKeys(array_keys($topology['vms']), [
+			'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster'
 		]);
 		$status_items = API::Item()->get([
 			'output' => ['name', 'lastvalue', 'lastclock'],
@@ -433,7 +437,8 @@ class VMwareCollector {
 				$result[$name] = [
 					'name' => $name, 'vcenter_hostid' => $vcenter_hostid,
 					'status' => self::hasRecentValue($item) ? $item['lastvalue'] : null,
-					'hypervisors' => 0, 'memory_total' => 0.0, 'memory_used' => 0.0
+					'hypervisors' => 0, 'virtual_machines' => 0, 'discovered_vms' => 0,
+					'memory_total' => 0.0, 'memory_used' => 0.0
 				];
 			}
 		}
@@ -447,11 +452,25 @@ class VMwareCollector {
 			$name = $name !== '' ? $name : _('Standalone (no cluster)');
 			$result[$name] ??= [
 				'name' => $name, 'vcenter_hostid' => $vcenter_hostid, 'status' => null, 'hypervisors' => 0,
+				'virtual_machines' => 0, 'discovered_vms' => 0,
 				'memory_total' => 0.0, 'memory_used' => 0.0
 			];
 			$result[$name]['hypervisors']++;
+			$result[$name]['virtual_machines'] += (int) ($m['vm_count'] ?? 0);
 			$result[$name]['memory_total'] += (float) ($m['memory_total'] ?? 0);
 			$result[$name]['memory_used'] += (float) ($m['memory_used'] ?? 0);
+		}
+
+		foreach ($topology['vms'] as $hostid => $vm) {
+			$cluster = $vm_metrics[$hostid]['cluster'] ?? null;
+			if ($cluster === null) {
+				continue;
+			}
+			$name = trim((string) $cluster);
+			$name = $name !== '' ? $name : _('Standalone (no cluster)');
+			if (isset($result[$name])) {
+				$result[$name]['discovered_vms']++;
+			}
 		}
 		uksort($result, 'strnatcasecmp');
 		return array_values($result);

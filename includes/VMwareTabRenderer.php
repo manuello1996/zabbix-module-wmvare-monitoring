@@ -213,7 +213,8 @@ class VMwareTabRenderer {
 	private static function clusters(array $rows): CDiv {
 		$table = (new CTableInfo())
 			->setHeader([
-				_('Cluster'), _('Status'), _('Hypervisors'), _('Memory used'), _('Capacity')
+				_('Cluster'), _('Status'), _('Hypervisors'), _('Virtual machines'), _('Discovered VMs'),
+				_('Memory used'), _('Capacity')
 			])
 			->setNoDataMessage(_('No clusters or standalone hypervisors discovered.'));
 		foreach ($rows as $row) {
@@ -231,6 +232,8 @@ class VMwareTabRenderer {
 				$cluster_link,
 				self::state($status),
 				(string) $row['hypervisors'],
+				(string) $row['virtual_machines'],
+				(string) $row['discovered_vms'],
 				VMwareFormatter::bytes($row['memory_used']),
 				VMwareFormatter::bytes($row['memory_total'])
 			]);
