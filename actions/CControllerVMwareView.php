@@ -132,7 +132,7 @@ class CControllerVMwareView extends CController {
 		];
 
 		if ($hostid !== '') {
-			$data = array_replace($data, VMwareCollector::summary($hostid, false));
+			$data = array_replace($data, VMwareCollector::summary($hostid, false, false));
 		}
 
 		$response = new CControllerResponseData($data);

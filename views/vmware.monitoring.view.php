@@ -136,11 +136,11 @@ $page->addItem(
 $tabs = [];
 foreach ([
 	['overview', _('Overview')],
+	['clusters', _('Clusters')],
 	['hypervisors', _('Hypervisors')],
 	['vms', _('Discovered VMs')],
 	['datastores', _('Datastores')],
-	['clusters', _('Clusters')],
-	['alarms', _('Alarms')]
+	['alarms', _('vCenter Issues')]
 ] as $index => [$key, $label]) {
 	$active = $key === $data['initial_tab'];
 	$tabs[] = (new CSpan($label))

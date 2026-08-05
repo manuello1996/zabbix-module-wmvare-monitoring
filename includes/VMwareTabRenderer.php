@@ -13,6 +13,7 @@ use CTableInfo;
 use CTag;
 use CUrl;
 use CSeverityHelper;
+use Widgets\Problems\Includes\WidgetProblems;
 
 class VMwareTabRenderer {
 	private const PAGER_RANGE = 11;
@@ -47,7 +48,14 @@ class VMwareTabRenderer {
 		$table->addRow([_('Discovered virtual machines'), (string) $data['vms_count']]);
 		$table->addRow([_('Unique datastores'), (string) $data['datastores_count']]);
 		$table->addRow([_('Datastore attachments'), (string) $data['datastore_attachments_count']]);
-		return self::section(_('vCenter overview'), [$table]);
+
+		return new CDiv([
+			self::section(_('vCenter overview'), [$table]),
+			self::section(_('Problems'), [
+				(new CDiv(new WidgetProblems($data['problem_widget'])))
+					->addClass('dashboard-widget-problems')
+			])
+		]);
 	}
 
 	private static function hypervisors(array $data): CDiv {
@@ -251,8 +259,8 @@ class VMwareTabRenderer {
 
 	private static function alarms(array $rows): CDiv {
 		$table = (new CTableInfo())
-			->setHeader([_('Alarm'), _('Status'), _('Severity'), _('Last update')])
-			->setNoDataMessage(_('No active VMware alarms.'));
+			->setHeader([_('Issue'), _('Status'), _('Severity'), _('Last update')])
+			->setNoDataMessage(_('No active vCenter issues.'));
 		foreach ($rows as $row) {
 			$severity = $row['severity'] === null
 				? '-'
@@ -265,7 +273,7 @@ class VMwareTabRenderer {
 				self::clock($row['lastclock'])
 			]);
 		}
-		return self::section(_('Active VMware alarms'), [$table]);
+		return self::section(_('Active vCenter issues'), [$table]);
 	}
 
 	private static function section(string $title, array $content): CDiv {

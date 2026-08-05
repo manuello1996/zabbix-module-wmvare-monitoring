@@ -3,7 +3,10 @@
 namespace Modules\VMwareMonitoring\Includes;
 
 use API;
+use CRoleHelper;
+use CScreenProblem;
 use CSettingsHelper;
+use CWebUser;
 use DB;
 use Manager;
 
@@ -122,7 +125,8 @@ class VMwareCollector {
 		return $result;
 	}
 
-	public static function summary(string $vcenter_hostid, bool $include_datastores = true): array {
+	public static function summary(string $vcenter_hostid, bool $include_datastores = true,
+			bool $include_problems = true): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
 		$vcenter = self::itemsByKeys([$vcenter_hostid], self::VCENTER_KEYS)[$vcenter_hostid]
 			?? array_fill_keys(array_values(self::VCENTER_KEYS), null);
@@ -137,7 +141,94 @@ class VMwareCollector {
 			'vms_count' => count($topology['vms']),
 			'reported_vms_count' => $reported_vms,
 			'datastores_count' => count(self::uniqueDatastores($attachments)),
-			'datastore_attachments_count' => count($attachments)
+			'datastore_attachments_count' => count($attachments),
+			'problem_widget' => $include_problems
+				? self::problemWidgetData($vcenter_hostid, $topology)
+				: []
+		];
+	}
+
+	private static function problemWidgetData(string $vcenter_hostid, array $topology): array {
+		$hostids = array_values(array_unique(array_merge(
+			[$vcenter_hostid],
+			array_keys($topology['hypervisors']),
+			array_keys($topology['vms'])
+		)));
+		$search_limit = CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT);
+		$show_lines = ZBX_DEFAULT_WIDGET_LINES;
+		$data = CScreenProblem::getData([
+			'show' => TRIGGERS_OPTION_RECENT_PROBLEM,
+			'groupids' => null,
+			'exclude_groupids' => null,
+			'hostids' => $hostids,
+			'name' => '',
+			'severities' => [],
+			'evaltype' => TAG_EVAL_TYPE_AND_OR,
+			'tags' => [],
+			'show_symptoms' => false,
+			'show_suppressed' => false,
+			'acknowledgement_status' => ZBX_ACK_STATUS_ALL,
+			'acknowledged_by_me' => 0,
+			'show_opdata' => OPERATIONAL_DATA_SHOW_SEPARATELY
+		], $search_limit);
+		$data = CScreenProblem::sortData($data, $search_limit, 'clock', ZBX_SORT_DOWN);
+
+		$problem_count = count($data['problems']);
+		$info = $problem_count > $show_lines
+			? _n('%1$d of %3$d%2$s problem is shown', '%1$d of %3$d%2$s problems are shown',
+				min($show_lines, $problem_count),
+				$problem_count > $search_limit ? '+' : '',
+				min($search_limit, $problem_count)
+			)
+			: '';
+		$data['problems'] = array_slice($data['problems'], 0, $show_lines, true);
+		$data = CScreenProblem::makeData($data, [
+			'show' => TRIGGERS_OPTION_RECENT_PROBLEM,
+			'details' => 0,
+			'show_opdata' => OPERATIONAL_DATA_SHOW_SEPARATELY
+		]);
+		$data += [
+			'show_three_columns' => false,
+			'show_two_columns' => false
+		];
+
+		if ($data['problems']) {
+			$data['triggers_hosts'] = getTriggersHostsList($data['triggers']);
+			foreach ($data['problems'] as &$problem) {
+				$problem['symptom_count'] = 0;
+				$problem['symptoms'] = [];
+			}
+			unset($problem);
+		}
+
+		return $data + [
+			'fields' => [
+				'show' => TRIGGERS_OPTION_RECENT_PROBLEM,
+				'show_tags' => SHOW_TAGS_NONE,
+				'show_timeline' => ZBX_TIMELINE_ON,
+				'highlight_row' => ZBX_HIGHLIGHT_OFF,
+				'tags' => [],
+				'tag_name_format' => TAG_NAME_FULL,
+				'tag_priority' => '',
+				'show_opdata' => OPERATIONAL_DATA_SHOW_SEPARATELY
+			],
+			'info' => $info,
+			'sortfield' => 'clock',
+			'sortorder' => ZBX_SORT_DOWN,
+			'config' => [
+				'problem_ack_style' => CSettingsHelper::get(CSettingsHelper::PROBLEM_ACK_STYLE),
+				'problem_unack_style' => CSettingsHelper::get(CSettingsHelper::PROBLEM_UNACK_STYLE),
+				'blink_period' => CSettingsHelper::get(CSettingsHelper::BLINK_PERIOD)
+			],
+			'allowed' => [
+				'ui_problems' => CWebUser::checkAccess(CRoleHelper::UI_MONITORING_PROBLEMS),
+				'add_comments' => CWebUser::checkAccess(CRoleHelper::ACTIONS_ADD_PROBLEM_COMMENTS),
+				'change_severity' => CWebUser::checkAccess(CRoleHelper::ACTIONS_CHANGE_SEVERITY),
+				'acknowledge' => CWebUser::checkAccess(CRoleHelper::ACTIONS_ACKNOWLEDGE_PROBLEMS),
+				'close' => CWebUser::checkAccess(CRoleHelper::ACTIONS_CLOSE_PROBLEMS),
+				'suppress_problems' => CWebUser::checkAccess(CRoleHelper::ACTIONS_SUPPRESS_PROBLEMS),
+				'rank_change' => CWebUser::checkAccess(CRoleHelper::ACTIONS_CHANGE_PROBLEM_RANKING)
+			]
 		];
 	}
 

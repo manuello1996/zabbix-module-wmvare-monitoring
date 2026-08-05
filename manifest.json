@@ -6,7 +6,7 @@
 	"name": "VMware Monitoring",
 	"namespace": "VMwareMonitoring",
 	"version": "1.1.0",
-	"description": "vCenter, hypervisor, virtual machine and datastore overview for the official Zabbix VMware template.",
+	"description": "vCenter, hypervisor, virtual machine, datastore and issue overview for the official Zabbix VMware template.",
 	"actions": {
 		"vmware.monitoring.list": {
 			"class": "CControllerVMwareList",

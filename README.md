@@ -2,7 +2,7 @@
 
 A read-only Zabbix frontend module that turns the data collected by Zabbix's official VMware
 template into a navigable overview of vCenters, hypervisors, virtual machines, clusters,
-datastores, alarms, and hardware sensors.
+datastores, vCenter issues, active problems, and hardware sensors.
 
 The module does not connect to VMware directly. It reads existing monitoring data through the
 Zabbix API and applies the permissions of the signed-in Zabbix user.
@@ -12,6 +12,10 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
 - Multi-vCenter overview with health, product, version, hypervisor, VM, datastore, and problem
   summaries.
 - vCenter detail pages with lazy-loaded tabs, so detailed data is requested only when opened.
+- Overview embeds the standard Zabbix Problems widget table in recent-problems mode with operational
+  data shown separately, scoped to the vCenter and its discovered hypervisor and VM hosts.
+- The embedded Problems table exposes the standard dashboard-widget hooks, including compatibility
+  with the Detail action provided by `Custom-Problem-Analysis` when that module is installed.
 - Hypervisor inventory with:
   - datacenter and cluster placement;
   - connection and VMware health state;
@@ -32,7 +36,7 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
   including capacity, free space, latency, IOPS, and multipath information.
 - Hardware sensor page with VMware value-map states, related problems, collection errors, sorting,
   and multi-type checkbox filtering.
-- Global VMware alarm view based on the alarm data already collected for the vCenter.
+- vCenter Issues view based on the alarm data already collected for the vCenter.
 - Server-side pagination for large VM and datastore inventories. Sensor pagination is applied after
   its name, status, and type filters.
 - Pagination size follows the **Rows per page** setting in the user's Zabbix profile.
@@ -91,8 +95,8 @@ page. Do not copy the repository's `.git` directory into a packaged production i
    hypervisor and VM discovery rules to create hosts.
 2. Open **Monitoring → VMware** to see every accessible vCenter that has a monitored
    `vmware.version[{$VMWARE.URL}]` item.
-3. Select a vCenter and use the Overview, Hypervisors, Discovered VMs, Datastores, Clusters, and
-   Alarms tabs.
+3. Select a vCenter and use the Overview, Clusters, Hypervisors, Discovered VMs, Datastores, and
+   vCenter Issues tabs.
 4. Select hypervisor or VM names for links to native Zabbix pages. Hypervisor menus also provide
    access to their sensor details.
 5. Use the filters before paging through large environments. Filter and sort selections are kept

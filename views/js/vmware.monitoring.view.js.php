@@ -12,6 +12,7 @@ window.vmware_monitoring = new class {
 		this.bindTabs();
 		this.bindFilters();
 		this.bindPanel();
+		this.bindProblemEvents();
 		if (this.activeTab === 'hypervisors') {
 			this.getState('hypervisors').search = String(config.search || '').trim();
 		}
@@ -111,6 +112,27 @@ window.vmware_monitoring = new class {
 		});
 	}
 
+	bindProblemEvents() {
+		if (typeof $ === 'undefined' || typeof $.subscribe !== 'function') {
+			return;
+		}
+
+		$.subscribe('acknowledge.create', (event, response) => {
+			clearMessages();
+			addMessage(makeMessageBox('good', [], response.success.title));
+			this.cache.clear();
+			if (this.activeTab === 'overview') {
+				this.loadTab('overview', true);
+			}
+		});
+		$.subscribe('event.rank_change', () => {
+			this.cache.clear();
+			if (this.activeTab === 'overview') {
+				this.loadTab('overview', true);
+			}
+		});
+	}
+
 	getState(tab) {
 		if (!this.state.has(tab)) {
 			this.state.set(tab, {page: 1, search: '', sort: 'name', sortorder: 'ASC'});
@@ -168,6 +190,9 @@ window.vmware_monitoring = new class {
 			return;
 		}
 		this.panel.innerHTML = html;
+		document.dispatchEvent(new CustomEvent('zbx_reload', {
+			detail: {source: 'vmware-monitoring', tab}
+		}));
 		this.loadSparklines(this.panel);
 	}
 
