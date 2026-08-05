@@ -1264,6 +1264,7 @@ class VMwareCollector {
 	private static function problemCountsByHosts(array $events_by_host): array {
 		$result = [];
 		foreach ($events_by_host as $hostid => $events) {
+			$result[$hostid] = [];
 			foreach ($events as $severity) {
 				$result[$hostid][$severity] = ($result[$hostid][$severity] ?? 0) + 1;
 			}
