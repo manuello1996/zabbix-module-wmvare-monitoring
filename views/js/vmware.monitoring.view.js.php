@@ -54,19 +54,12 @@ window.vmware_monitoring = new class {
 		this.panel.addEventListener('click', event => {
 			const datastoreToggle = event.target.closest('[data-vmware-monitoring-datastore-toggle]');
 			if (datastoreToggle) {
-				event.preventDefault();
-				const details = document.getElementById(
-					datastoreToggle.dataset.vmwareMonitoringDatastoreToggle
-				);
-				if (details !== null) {
-					const expanded = datastoreToggle.getAttribute('aria-expanded') !== 'true';
-					datastoreToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-					datastoreToggle.setAttribute('title', expanded
-						? <?= json_encode(_('Hide attachment details')) ?>
-						: <?= json_encode(_('Show attachment details')) ?>
-					);
-					details.hidden = !expanded;
+				const interactive = event.target.closest('a, button, input, select, textarea, [data-hintbox]');
+				if (interactive !== null && interactive !== datastoreToggle) {
+					return;
 				}
+				event.preventDefault();
+				this.toggleDatastore(datastoreToggle);
 				return;
 			}
 
@@ -104,12 +97,35 @@ window.vmware_monitoring = new class {
 		});
 
 		this.panel.addEventListener('keydown', event => {
+			const datastoreToggle = event.target.closest('[data-vmware-monitoring-datastore-toggle]');
+			if (datastoreToggle && event.target === datastoreToggle
+					&& (event.key === 'Enter' || event.key === ' ')) {
+				event.preventDefault();
+				this.toggleDatastore(datastoreToggle);
+				return;
+			}
+
 			const sort = event.target.closest('[data-vmware-monitoring-sort]');
 			if (sort && (event.key === 'Enter' || event.key === ' ')) {
 				event.preventDefault();
 				this.sortTab(sort.dataset.vmwareMonitoringSort);
 			}
 		});
+	}
+
+	toggleDatastore(toggle) {
+		const details = document.getElementById(toggle.dataset.vmwareMonitoringDatastoreToggle);
+		if (details === null) {
+			return;
+		}
+
+		const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+		toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+		toggle.setAttribute('title', expanded
+			? <?= json_encode(_('Hide attachment details')) ?>
+			: <?= json_encode(_('Show attachment details')) ?>
+		);
+		details.hidden = !expanded;
 	}
 
 	bindProblemEvents() {

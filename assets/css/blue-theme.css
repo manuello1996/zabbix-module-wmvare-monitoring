@@ -1327,6 +1327,15 @@
 	margin: 0;
 }
 
+.vmware-monitoring-datastore-summary {
+	cursor: pointer;
+}
+
+.vmware-monitoring-datastore-summary:focus-visible {
+	outline: 2px solid var(--vmware-monitoring-accent);
+	outline-offset: -2px;
+}
+
 .vmware-monitoring-vm-notes {
 	display: inline-block;
 	max-width: 280px;

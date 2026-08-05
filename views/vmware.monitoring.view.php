@@ -2,6 +2,8 @@
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 
+$this->addJsFile('items.js');
+$this->addJsFile('multilineinput.js');
 $this->includeJsFile('vmware.monitoring.view.js.php');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 

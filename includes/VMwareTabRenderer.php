@@ -193,20 +193,24 @@ class VMwareTabRenderer {
 				]);
 			}
 
-			$attachment_toggle = (new CLinkAction((string) $row['attachments']))
-				->setAttribute('aria-controls', $details_id)
-				->setAttribute('aria-expanded', 'false')
-				->setAttribute('data-vmware-monitoring-datastore-toggle', $details_id)
-				->setTitle(_('Show attachment details'));
-			$unique_table->addRow([
-				(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
-				$row['type'] ?: '-',
-				$row['uuid'] ?: '-',
-				VMwareFormatter::bytes($row['total']),
-				VMwareFormatter::percent($row['free_pct']),
-				self::hypervisorList($row['hypervisors']),
-				$attachment_toggle
-			]);
+			$unique_table->addRow(
+				(new CRow([
+					(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
+					$row['type'] ?: '-',
+					$row['uuid'] ?: '-',
+					VMwareFormatter::bytes($row['total']),
+					VMwareFormatter::percent($row['free_pct']),
+					self::hypervisorList($row['hypervisors']),
+					(string) $row['attachments']
+				]))
+					->addClass('vmware-monitoring-datastore-summary')
+					->setAttribute('role', 'button')
+					->setAttribute('tabindex', '0')
+					->setAttribute('aria-controls', $details_id)
+					->setAttribute('aria-expanded', 'false')
+					->setAttribute('data-vmware-monitoring-datastore-toggle', $details_id)
+					->setTitle(_('Show attachment details'))
+			);
 			$unique_table->addRow(
 				(new CRow([
 					(new CCol($attachment_table))->setColSpan(7)
