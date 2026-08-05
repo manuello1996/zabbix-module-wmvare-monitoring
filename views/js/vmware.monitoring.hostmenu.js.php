@@ -6,6 +6,38 @@
 	const sensorsLabel = <?= json_encode(_('Sensors')) ?>;
 	const viewLabel = <?= json_encode(_('View')) ?>;
 	let activeObserver = null;
+	const hostView = typeof view === 'object' && view !== null
+		? view
+		: (window.view = {});
+
+	if (typeof hostView.editHost !== 'function') {
+		hostView.editHost = hostid => {
+			const originalUrl = location.href;
+			const overlay = PopUp('popup.host.edit', {hostid: String(hostid)}, {
+				dialogueid: 'host_edit',
+				dialogue_class: 'modal-popup-large',
+				prevent_navigation: true
+			});
+			const dialogue = overlay.$dialogue?.[0];
+
+			if (dialogue === undefined) {
+				return;
+			}
+
+			dialogue.addEventListener('dialogue.submit', () => {
+				if (window.vmware_monitoring !== undefined) {
+					window.vmware_monitoring.cache.clear();
+					window.vmware_monitoring.loadTab(window.vmware_monitoring.activeTab, true);
+				}
+				else {
+					window.location.reload();
+				}
+			}, {once: true});
+			dialogue.addEventListener('dialogue.close', () => {
+				history.replaceState({}, '', originalUrl);
+			}, {once: true});
+		};
+	}
 
 	const prepareSensorsEntry = event => {
 		if (event.type === 'keydown' && event.key !== 'Enter') {
