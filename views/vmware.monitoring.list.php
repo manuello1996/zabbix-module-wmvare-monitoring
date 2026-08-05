@@ -14,7 +14,7 @@ $makeStat = static function (string $modifier, string $label, $value): CDiv {
 		->addClass('vmware-monitoring-card-'.$modifier);
 };
 
-$problemBadge = static function (array $severities, string $hostid) {
+$problemBadge = static function (array $severities, array $hostids) {
 	if (!$severities) {
 		return (new CSpan(_('None')))->addClass(ZBX_STYLE_GREEN);
 	}
@@ -32,7 +32,7 @@ $problemBadge = static function (array $severities, string $hostid) {
 		(new CDiv($content))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST),
 		(new CUrl('zabbix.php'))
 			->setArgument('action', 'problem.view')
-			->setArgument('hostids', [$hostid])
+			->setArgument('hostids', $hostids)
 			->setArgument('filter_set', 1)
 	))->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
 };
@@ -137,7 +137,7 @@ foreach ($data['vcenters'] as $vcenter) {
 		(new CSpan($health['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$health['kind']),
-		$problemBadge($vcenter['problems'], $vcenter['hostid']),
+		$problemBadge($vcenter['problems'], $vcenter['problem_hostids']),
 		$vcenter['metrics']['version'] ?? '-',
 		(string) $vcenter['hypervisors'],
 		(string) $vcenter['vms'],

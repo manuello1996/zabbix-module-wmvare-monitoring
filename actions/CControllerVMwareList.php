@@ -99,11 +99,6 @@ class CControllerVMwareList extends CController {
 		unset($host);
 
 		$vcenters = VMwareCollector::collectVCenterMetrics($hosts);
-		$problems = VMwareCollector::problemsByHosts(array_keys($hosts));
-		foreach ($vcenters as $hostid => &$vcenter) {
-			$vcenter['problems'] = $problems[$hostid] ?? [];
-		}
-		unset($vcenter);
 
 		$totals = [
 			'vcenters' => count($vcenters), 'hypervisors' => 0, 'vms' => 0,

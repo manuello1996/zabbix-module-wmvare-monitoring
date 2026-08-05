@@ -9,8 +9,8 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
 
 ## Features
 
-- Multi-vCenter overview with health, product, version, hypervisor, VM, datastore, and problem
-  summaries.
+- Multi-vCenter overview with health, product, version, hypervisor, VM, datastore, and aggregated
+  vCenter, hypervisor, and discovered-VM problem summaries.
 - vCenter detail pages with lazy-loaded tabs, so detailed data is requested only when opened.
 - Overview embeds the standard Zabbix Problems widget table in recent-problems mode with operational
   data shown separately, scoped to the vCenter and its discovered hypervisor and VM hosts.

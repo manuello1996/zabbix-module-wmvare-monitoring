@@ -92,7 +92,9 @@ class VMwareCollector {
 				'hypervisors' => 0,
 				'vms' => 0,
 				'datastores' => 0,
-				'datastore_attachments' => 0
+				'datastore_attachments' => 0,
+				'problems' => [],
+				'problem_hostids' => [$hostid]
 			];
 		}
 
@@ -113,13 +115,37 @@ class VMwareCollector {
 			}
 		}
 
+		$problem_hostids_by_vcenter = [];
 		foreach (array_keys($hosts) as $hostid) {
 			$topology = self::discoveredTopology($hostid);
 			$attachments = self::datastores(array_keys($topology['hypervisors']), false);
+			$problem_hostids_by_vcenter[$hostid] = array_values(array_unique(array_merge(
+				[$hostid],
+				array_keys($topology['hypervisors']),
+				array_keys($topology['vms'])
+			)));
 			$result[$hostid]['hypervisors'] = count($topology['hypervisors']);
 			$result[$hostid]['vms'] = self::reportedVmCount(array_keys($topology['hypervisors']));
 			$result[$hostid]['datastores'] = count(self::uniqueDatastores($attachments));
 			$result[$hostid]['datastore_attachments'] = count($attachments);
+			$result[$hostid]['problem_hostids'] = $problem_hostids_by_vcenter[$hostid];
+		}
+
+		$all_problem_hostids = array_values(array_unique(array_merge(...array_values(
+			$problem_hostids_by_vcenter
+		))));
+		$problem_events = self::problemEventsByHosts($all_problem_hostids);
+		foreach ($problem_hostids_by_vcenter as $vcenter_hostid => $problem_hostids) {
+			$events = [];
+			foreach ($problem_hostids as $problem_hostid) {
+				foreach ($problem_events[$problem_hostid] ?? [] as $eventid => $severity) {
+					$events[$eventid] = isset($events[$eventid])
+						? max($events[$eventid], $severity)
+						: $severity;
+				}
+			}
+			$counts = self::problemCountsByHosts([$vcenter_hostid => $events]);
+			$result[$vcenter_hostid]['problems'] = $counts[$vcenter_hostid] ?? [];
 		}
 
 		return $result;
