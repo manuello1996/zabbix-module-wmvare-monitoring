@@ -115,20 +115,48 @@ class VMwareCollector {
 			}
 		}
 
+		$vcenter_hostids = array_map('strval', array_keys($hosts));
+		$topologies = self::discoveredTopologies($vcenter_hostids);
 		$problem_hostids_by_vcenter = [];
-		foreach (array_keys($hosts) as $hostid) {
-			$topology = self::discoveredTopology($hostid);
-			$attachments = self::datastores(array_keys($topology['hypervisors']), false);
+		$hypervisor_vcenters = [];
+		$all_hypervisor_hostids = [];
+
+		foreach ($vcenter_hostids as $hostid) {
+			$topology = $topologies[$hostid];
+			foreach (array_keys($topology['hypervisors']) as $hypervisor_hostid) {
+				$hypervisor_hostid = (string) $hypervisor_hostid;
+				$hypervisor_vcenters[$hypervisor_hostid] = $hostid;
+				$all_hypervisor_hostids[$hypervisor_hostid] = true;
+			}
+
 			$problem_hostids_by_vcenter[$hostid] = array_values(array_unique(array_merge(
 				[$hostid],
 				array_keys($topology['hypervisors']),
 				array_keys($topology['vms'])
 			)));
 			$result[$hostid]['hypervisors'] = count($topology['hypervisors']);
-			$result[$hostid]['vms'] = self::reportedVmCount(array_keys($topology['hypervisors']));
-			$result[$hostid]['datastores'] = count(self::uniqueDatastores($attachments));
-			$result[$hostid]['datastore_attachments'] = count($attachments);
 			$result[$hostid]['problem_hostids'] = $problem_hostids_by_vcenter[$hostid];
+		}
+
+		$attachments_by_vcenter = array_fill_keys($vcenter_hostids, []);
+		$attachments = self::datastores(array_keys($all_hypervisor_hostids), false);
+		foreach ($attachments as $attachment) {
+			$hostid = (string) $attachment['hostid'];
+			if (isset($hypervisor_vcenters[$hostid])) {
+				$attachments_by_vcenter[$hypervisor_vcenters[$hostid]][] = $attachment;
+			}
+		}
+
+		$vm_counts = self::itemsByKeys(array_keys($all_hypervisor_hostids), [
+			'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count'
+		]);
+		foreach ($vcenter_hostids as $hostid) {
+			foreach (array_keys($topologies[$hostid]['hypervisors']) as $hypervisor_hostid) {
+				$result[$hostid]['vms'] += (int) ($vm_counts[$hypervisor_hostid]['vm_count'] ?? 0);
+			}
+
+			$result[$hostid]['datastores'] = count(self::uniqueDatastores($attachments_by_vcenter[$hostid]));
+			$result[$hostid]['datastore_attachments'] = count($attachments_by_vcenter[$hostid]);
 		}
 
 		$all_problem_hostids = array_values(array_unique(array_merge(...array_values(
@@ -260,9 +288,20 @@ class VMwareCollector {
 
 	public static function discoveredTopology(string $vcenter_hostid, bool $include_hypervisors = true,
 			bool $include_vms = true): array {
+		return self::discoveredTopologies([$vcenter_hostid], $include_hypervisors, $include_vms)[$vcenter_hostid];
+	}
+
+	private static function discoveredTopologies(array $vcenter_hostids, bool $include_hypervisors = true,
+			bool $include_vms = true): array {
+		$vcenter_hostids = array_values(array_unique(array_map('strval', $vcenter_hostids)));
+		$result = array_fill_keys($vcenter_hostids, ['hypervisors' => [], 'vms' => []]);
+		if (!$vcenter_hostids) {
+			return $result;
+		}
+
 		$rules = API::DiscoveryRule()->get([
-			'output' => ['itemid', 'key_'],
-			'hostids' => [$vcenter_hostid],
+			'output' => ['itemid', 'hostid', 'key_'],
+			'hostids' => $vcenter_hostids,
 			'filter' => ['key_' => [
 				'vmware.hv.discovery[{$VMWARE.URL}]',
 				'vmware.vm.discovery[{$VMWARE.URL}]'
@@ -270,59 +309,70 @@ class VMwareCollector {
 			'preservekeys' => true
 		]) ?: [];
 
-		$rule_types = [];
+		$rule_contexts = [];
 		foreach ($rules as $rule) {
 			$type = str_starts_with($rule['key_'], 'vmware.hv.')
 				? 'hypervisors'
 				: 'vms';
 			if (($type === 'hypervisors' && $include_hypervisors) || ($type === 'vms' && $include_vms)) {
-				$rule_types[(string) $rule['itemid']] = $type;
+				$rule_contexts[(string) $rule['itemid']] = [
+					'vcenter_hostid' => (string) $rule['hostid'],
+					'type' => $type
+				];
 			}
 		}
 
-		$result = ['hypervisors' => [], 'vms' => []];
-		if (!$rule_types) {
+		if (!$rule_contexts) {
 			return $result;
 		}
 
 		$prototypes = DB::select('host_discovery', [
 			'output' => ['hostid', 'parent_itemid'],
-			'filter' => ['parent_itemid' => array_keys($rule_types)]
+			'filter' => ['parent_itemid' => array_keys($rule_contexts)]
 		]);
-		$prototype_types = [];
+		$prototype_contexts = [];
 		foreach ($prototypes as $prototype) {
 			$ruleid = (string) $prototype['parent_itemid'];
-			$prototype_types[(string) $prototype['hostid']] = $rule_types[$ruleid];
+			if (isset($rule_contexts[$ruleid])) {
+				$prototype_contexts[(string) $prototype['hostid']] = $rule_contexts[$ruleid];
+			}
 		}
-		if (!$prototype_types) {
+		if (!$prototype_contexts) {
 			return $result;
 		}
 
 		$discovered = DB::select('host_discovery', [
 			'output' => ['hostid', 'parent_hostid'],
-			'filter' => ['parent_hostid' => array_keys($prototype_types)]
+			'filter' => ['parent_hostid' => array_keys($prototype_contexts)]
 		]);
-		$host_types = [];
+		$host_contexts = [];
 		foreach ($discovered as $host) {
 			$prototypeid = (string) $host['parent_hostid'];
-			$host_types[(string) $host['hostid']] = $prototype_types[$prototypeid];
+			if (isset($prototype_contexts[$prototypeid])) {
+				$host_contexts[(string) $host['hostid']] = $prototype_contexts[$prototypeid];
+			}
 		}
-		if (!$host_types) {
+		if (!$host_contexts) {
 			return $result;
 		}
 
 		$hosts = API::Host()->get([
 			'output' => ['hostid', 'host', 'name', 'status'],
-			'hostids' => array_keys($host_types),
+			'hostids' => array_keys($host_contexts),
 			'preservekeys' => true
 		]) ?: [];
 
 		foreach ($hosts as $hostid => $host) {
-			if (!isset($host_types[$hostid])) {
+			$hostid = (string) $hostid;
+			if (!isset($host_contexts[$hostid])) {
 				continue;
 			}
 
-			$result[$host_types[$hostid]][$hostid] = $host;
+			$context = $host_contexts[$hostid];
+			$vcenter_hostid = $context['vcenter_hostid'];
+			if (isset($result[$vcenter_hostid])) {
+				$result[$vcenter_hostid][$context['type']][$hostid] = $host;
+			}
 		}
 
 		return $result;
