@@ -9,6 +9,27 @@
 	const hostView = typeof view === 'object' && view !== null
 		? view
 		: (window.view = {});
+	const refreshAfterEdit = event => {
+		const response = event.detail ?? {};
+
+		if (window.vmware_monitoring !== undefined) {
+			if (response.success !== undefined) {
+				clearMessages();
+				addMessage(makeMessageBox('good', response.success.messages ?? [], response.success.title));
+			}
+			window.vmware_monitoring.cache.clear();
+			window.vmware_monitoring.loadTab(window.vmware_monitoring.activeTab, true);
+		}
+		else {
+			if (response.success !== undefined) {
+				postMessageOk(response.success.title);
+				if (response.success.messages !== undefined) {
+					postMessageDetails('success', response.success.messages);
+				}
+			}
+			window.location.reload();
+		}
+	};
 
 	if (typeof hostView.editHost !== 'function') {
 		hostView.editHost = hostid => {
@@ -24,18 +45,35 @@
 				return;
 			}
 
-			dialogue.addEventListener('dialogue.submit', () => {
-				if (window.vmware_monitoring !== undefined) {
-					window.vmware_monitoring.cache.clear();
-					window.vmware_monitoring.loadTab(window.vmware_monitoring.activeTab, true);
-				}
-				else {
-					window.location.reload();
-				}
-			}, {once: true});
+			dialogue.addEventListener('dialogue.submit', refreshAfterEdit, {once: true});
 			dialogue.addEventListener('dialogue.close', () => {
 				history.replaceState({}, '', originalUrl);
 			}, {once: true});
+		};
+	}
+
+	if (typeof hostView.editTrigger !== 'function') {
+		hostView.editTrigger = triggerData => {
+			clearMessages();
+			const overlay = PopUp('trigger.edit', triggerData, {
+				dialogueid: 'trigger-edit',
+				dialogue_class: 'modal-popup-large',
+				prevent_navigation: true
+			});
+			overlay.$dialogue?.[0]?.addEventListener('dialogue.submit', refreshAfterEdit, {once: true});
+		};
+	}
+
+	if (typeof hostView.editItem !== 'function') {
+		hostView.editItem = (target, itemData) => {
+			clearMessages();
+			const overlay = PopUp('item.edit', itemData, {
+				dialogueid: 'item-edit',
+				dialogue_class: 'modal-popup-large',
+				trigger_element: target,
+				prevent_navigation: true
+			});
+			overlay.$dialogue?.[0]?.addEventListener('dialogue.submit', refreshAfterEdit, {once: true});
 		};
 	}
 
