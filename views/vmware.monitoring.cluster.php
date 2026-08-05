@@ -228,17 +228,25 @@ if (!$cluster['native']) {
 	);
 }
 
-$distribution_table = (new CTableInfo())->setHeader([_('Distribution'), _('Detected values (hypervisor count)')]);
-$format_distribution = static function (array $values): string {
+$distribution_table = (new CTableInfo())->setHeader([
+	(new CColHeader(_('Distribution')))->setWidth('240px'),
+	_('Detected values')
+]);
+$add_distribution = static function (CTableInfo $table, string $label, array $values): void {
 	if (!$values) {
-		return '-';
+		$table->addRow([$label, '-']);
+		return;
 	}
+
 	uksort($values, 'strnatcasecmp');
-	$result = [];
+	$detected_values = [];
 	foreach ($values as $value => $count) {
-		$result[] = $value.' ('.$count.')';
+		$detected_values[] = new CDiv([
+			$value,
+			(new CSpan(' × '.(string) $count))->addClass(ZBX_STYLE_GREY)
+		]);
 	}
-	return implode(', ', $result);
+	$table->addRow([$label, $detected_values]);
 };
 foreach ([
 	[_('ESXi versions'), $cluster['totals']['versions']],
@@ -247,19 +255,19 @@ foreach ([
 	[_('CPU models'), $cluster['totals']['cpu_models']],
 	[_('Sensor types'), $cluster['sensors']['types']]
 ] as [$label, $values]) {
-	$distribution_table->addRow([$label, $format_distribution($values)]);
+	$add_distribution($distribution_table, $label, $values);
 }
 $sensor_states = [];
 foreach ($cluster['sensors']['states'] as $state => $count) {
 	$mapped = $state === 'unknown' ? ['text' => _('Unknown')] : VMwareFormatter::hypervisorHealth($state);
 	$sensor_states[$mapped['text']] = ($sensor_states[$mapped['text']] ?? 0) + $count;
 }
-$distribution_table->addRow([_('Sensor states'), $format_distribution($sensor_states)]);
+$add_distribution($distribution_table, _('Sensor states'), $sensor_states);
 $problem_severities = [];
 foreach ($cluster['totals']['problem_severities'] as $severity => $count) {
 	$problem_severities[CSeverityHelper::getName((int) $severity)] = $count;
 }
-$distribution_table->addRow([_('Active problem severities'), $format_distribution($problem_severities)]);
+$add_distribution($distribution_table, _('Active problem severities'), $problem_severities);
 $page->addItem(
 	(new CDiv([
 		(new CTag('h4', true, _('Cluster composition')))->addClass('vmware-monitoring-section-title'),
