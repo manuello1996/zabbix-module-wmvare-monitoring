@@ -3,6 +3,8 @@
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareTabRenderer;
 
+$this->includeJsFile('vmware.monitoring.hostmenu.js.php');
+
 $cluster = $data['cluster'];
 $vcenter_url = (new CUrl('zabbix.php'))
 	->setArgument('action', 'vmware.monitoring.view')

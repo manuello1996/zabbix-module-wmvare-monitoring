@@ -1318,6 +1318,15 @@
 	overflow-wrap: anywhere;
 }
 
+.vmware-monitoring-datastore-details > td {
+	padding: 0 20px 16px;
+	background-color: var(--vmware-monitoring-surface-muted);
+}
+
+.vmware-monitoring-datastore-details table {
+	margin: 0;
+}
+
 .vmware-monitoring-vm-notes {
 	display: inline-block;
 	max-width: 280px;

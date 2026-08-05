@@ -2,9 +2,12 @@
 
 namespace Modules\VMwareMonitoring\Includes;
 
+use CCol;
 use CDiv;
 use CLink;
 use CLinkAction;
+use CMenuPopupHelper;
+use CRow;
 use CSpan;
 use CTableInfo;
 use CTag;
@@ -163,6 +166,30 @@ class VMwareTabRenderer {
 			])
 			->setNoDataMessage(_('No datastores discovered yet.'));
 		foreach ($data['unique']['rows'] as $row) {
+			$details_id = 'vmware-monitoring-datastore-'.substr(hash('sha256', $row['identity']), 0, 16);
+			$attachment_table = (new CTableInfo())
+				->setHeader([
+					_('Hypervisor'), _('Type'), _('Capacity'), _('Free'),
+					_('Read / write latency'), _('Read / write IOPS'), _('Multipaths')
+				])
+				->setNoDataMessage(_('No datastore attachments found.'));
+			foreach ($row['attachment_rows'] as $attachment) {
+				$attachment_table->addRow([
+					$attachment['hypervisor'] ?: '-',
+					$attachment['type'] ?: '-',
+					VMwareFormatter::bytes($attachment['total']),
+					VMwareFormatter::percent($attachment['free_pct']),
+					($attachment['read_latency'] ?? '-').' / '.($attachment['write_latency'] ?? '-').' ms',
+					($attachment['read_iops'] ?? '-').' / '.($attachment['write_iops'] ?? '-'),
+					$attachment['multipath'] ?? '-'
+				]);
+			}
+
+			$attachment_toggle = (new CLinkAction((string) $row['attachments']))
+				->setAttribute('aria-controls', $details_id)
+				->setAttribute('aria-expanded', 'false')
+				->setAttribute('data-vmware-monitoring-datastore-toggle', $details_id)
+				->setTitle(_('Show attachment details'));
 			$unique_table->addRow([
 				(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
 				$row['type'] ?: '-',
@@ -170,31 +197,16 @@ class VMwareTabRenderer {
 				VMwareFormatter::bytes($row['total']),
 				VMwareFormatter::percent($row['free_pct']),
 				self::hypervisorList($row['hypervisors']),
-				(string) $row['attachments']
+				$attachment_toggle
 			]);
-		}
-
-		$attachment_table = (new CTableInfo())
-			->setHeader([
-				self::sortHeader(_('Datastore'), 'name', $data),
-				_('Hypervisor'),
-				_('Type'),
-				self::sortHeader(_('Capacity'), 'total', $data),
-				self::sortHeader(_('Free'), 'free', $data),
-				_('Read / write latency'), _('Read / write IOPS'), _('Multipaths')
-			])
-			->setNoDataMessage(_('No datastore attachments found.'));
-		foreach ($data['attachments']['rows'] as $row) {
-			$attachment_table->addRow([
-				(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
-				$row['hypervisor'] ?: '-',
-				$row['type'] ?: '-',
-				VMwareFormatter::bytes($row['total']),
-				VMwareFormatter::percent($row['free_pct']),
-				($row['read_latency'] ?? '-').' / '.($row['write_latency'] ?? '-').' ms',
-				($row['read_iops'] ?? '-').' / '.($row['write_iops'] ?? '-'),
-				$row['multipath'] ?? '-'
-			]);
+			$unique_table->addRow(
+				(new CRow([
+					(new CCol($attachment_table))->setColSpan(7)
+				]))
+					->setId($details_id)
+					->setAttribute('hidden', 'hidden')
+					->addClass('vmware-monitoring-datastore-details')
+			);
 		}
 
 		return new CDiv([
@@ -202,10 +214,6 @@ class VMwareTabRenderer {
 			self::section(_('Unique datastores'), [
 				$unique_table,
 				self::pager($data['unique'])
-			]),
-			self::section(_('Datastore attachments'), [
-				$attachment_table,
-				self::pager($data['attachments'])
 			])
 		]);
 	}
@@ -274,40 +282,19 @@ class VMwareTabRenderer {
 	}
 
 	public static function hostActionLink(string $name, string $hostid, bool $show_sensors = false): CLinkAction {
-		$latest_data = (new CUrl('zabbix.php'))
-			->setArgument('action', 'latest.view')
-			->setArgument('hostids', [$hostid])
-			->setArgument('filter_set', 1)
-			->getUrl();
-		$dashboard = (new CUrl('zabbix.php'))
-			->setArgument('action', 'host.dashboard.view')
-			->setArgument('hostid', $hostid)
-			->getUrl();
-		$items = [
-			$latest_data => _('Latest data'),
-			$dashboard => _('Host dashboard')
-		];
+		$link = (new CLinkAction($name))
+			->addClass('vmware-monitoring-name')
+			->setMenuPopup(CMenuPopupHelper::getHost($hostid));
+
 		if ($show_sensors) {
-			$sensors = (new CUrl('zabbix.php'))
+			$sensors_url = (new CUrl('zabbix.php'))
 				->setArgument('action', 'vmware.monitoring.sensors')
 				->setArgument('hostid', $hostid)
 				->getUrl();
-			$items[$sensors] = _('Sensors');
+			$link->setAttribute('data-vmware-monitoring-sensors-url', $sensors_url);
 		}
 
-		return (new CLinkAction($name))
-			->addClass('vmware-monitoring-name')
-			->setMenuPopup([
-				'type' => 'submenu',
-				'data' => [
-					'submenu' => [
-						'view' => [
-							'label' => _('View'),
-							'items' => $items
-						]
-					]
-				]
-			]);
+		return $link;
 	}
 
 	private static function hypervisorList(array $hypervisors) {

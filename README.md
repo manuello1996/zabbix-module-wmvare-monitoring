@@ -17,18 +17,19 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
   - connection and VMware health state;
   - active problems linked to **Monitoring → Problems**;
   - 24-hour CPU history, memory utilization, VM count, uptime, ESXi version, vendor, and model;
-  - quick links to Latest data, Host dashboard, and Sensors.
+  - native Zabbix host popup with an additional Sensors entry.
 - Discovered VM inventory with:
   - inventory notes and hypervisor, datacenter, and cluster placement;
   - power and runtime state;
   - active problems;
   - 24-hour CPU history, memory, committed storage, VMware Tools, snapshots, and uptime;
-  - quick links to Latest data and Host dashboard.
+  - native Zabbix host popup for dashboards, problems, latest data, graphs, inventory, and
+    permitted configuration pages.
 - Cluster overview with separate hypervisor-reported and Zabbix-discovered VM counts.
 - Cluster details with current CPU and memory capacity, utilization, hardware/software composition,
   datastore information, sensor summaries, active problems, and the cluster's hypervisors.
-- Datastore overview with unique datastore identity and per-hypervisor attachments, including
-  capacity, free space, latency, IOPS, and multipath information.
+- Datastore overview with expandable per-hypervisor attachments below each unique datastore,
+  including capacity, free space, latency, IOPS, and multipath information.
 - Hardware sensor page with VMware value-map states, related problems, collection errors, sorting,
   and multi-type checkbox filtering.
 - Global VMware alarm view based on the alarm data already collected for the vCenter.

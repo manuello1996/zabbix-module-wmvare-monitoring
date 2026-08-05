@@ -51,6 +51,24 @@ window.vmware_monitoring = new class {
 
 	bindPanel() {
 		this.panel.addEventListener('click', event => {
+			const datastoreToggle = event.target.closest('[data-vmware-monitoring-datastore-toggle]');
+			if (datastoreToggle) {
+				event.preventDefault();
+				const details = document.getElementById(
+					datastoreToggle.dataset.vmwareMonitoringDatastoreToggle
+				);
+				if (details !== null) {
+					const expanded = datastoreToggle.getAttribute('aria-expanded') !== 'true';
+					datastoreToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+					datastoreToggle.setAttribute('title', expanded
+						? <?= json_encode(_('Hide attachment details')) ?>
+						: <?= json_encode(_('Show attachment details')) ?>
+					);
+					details.hidden = !expanded;
+				}
+				return;
+			}
+
 			const sort = event.target.closest('[data-vmware-monitoring-sort]');
 			if (sort) {
 				this.sortTab(sort.dataset.vmwareMonitoringSort);

@@ -386,26 +386,33 @@ class VMwareCollector {
 				$haystack = $row['name'].' '.$row['type'].' '.implode(' ', $row['hypervisors']);
 				return str_contains(mb_strtolower($haystack), $needle);
 			});
-			$attachments = array_filter($attachments, static function (array $row) use ($needle): bool {
-				$haystack = $row['name'].' '.$row['type'].' '.$row['hypervisor'];
-				return str_contains(mb_strtolower($haystack), $needle);
-			});
 		}
 
 		self::sortDatastoreRows($unique, $sort, $sortorder);
-		self::sortDatastoreRows($attachments, $sort === 'attachments' ? 'name' : $sort, $sortorder);
-
 		$unique_page = self::paginateArray($unique, $page, $per_page);
 		$unique_page['rows'] = array_values($unique_page['rows']);
-		$attachment_page = self::paginateArray($attachments, $page, $per_page);
-		$attachment_page['rows'] = array_values($attachment_page['rows']);
+
+		$attachments_by_datastore = [];
+		foreach ($attachments as $attachment) {
+			$attachments_by_datastore[self::datastoreIdentity($attachment)][] = $attachment;
+		}
+		foreach ($attachments_by_datastore as &$datastore_attachments) {
+			usort($datastore_attachments,
+				static fn(array $a, array $b): int => strnatcasecmp($a['hypervisor'], $b['hypervisor'])
+			);
+		}
+		unset($datastore_attachments);
+
+		foreach ($unique_page['rows'] as &$datastore) {
+			$datastore['attachment_rows'] = $attachments_by_datastore[$datastore['identity']] ?? [];
+		}
+		unset($datastore);
 
 		return [
 			'search' => $search,
 			'sort' => $sort,
 			'sortorder' => $sortorder,
-			'unique' => $unique_page,
-			'attachments' => $attachment_page
+			'unique' => $unique_page
 		];
 	}
 
@@ -973,11 +980,10 @@ class VMwareCollector {
 	private static function uniqueDatastores(array $attachments): array {
 		$result = [];
 		foreach ($attachments as $attachment) {
-			$identity = $attachment['uuid'] !== ''
-				? $attachment['uuid']
-				: mb_strtolower($attachment['name'].'|'.$attachment['type']);
+			$identity = self::datastoreIdentity($attachment);
 			if (!isset($result[$identity])) {
 				$result[$identity] = $attachment + [
+					'identity' => $identity,
 					'hypervisors' => [],
 					'attachments' => 0
 				];
@@ -1006,6 +1012,12 @@ class VMwareCollector {
 		unset($datastore);
 		uasort($result, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
 		return array_values($result);
+	}
+
+	private static function datastoreIdentity(array $datastore): string {
+		return $datastore['uuid'] !== ''
+			? $datastore['uuid']
+			: mb_strtolower($datastore['name'].'|'.$datastore['type']);
 	}
 
 	private static function datastoreNameFromItem(string $name): string {

@@ -3,6 +3,7 @@
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 
 $this->includeJsFile('vmware.monitoring.view.js.php');
+$this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
 $page = (new CHtmlPage())
 	->setTitle(_('VMware'))
