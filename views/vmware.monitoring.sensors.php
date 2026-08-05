@@ -119,6 +119,12 @@ $sort_header = static function (string $label, string $field) use ($data): CLink
 
 $make_sensor_row = static function (array $sensor) use ($data): array {
 	$state = VMwareFormatter::hypervisorHealth($sensor['value']);
+	$status = (new CSpan($state['text']))
+		->addClass('vmware-monitoring-state')
+		->addClass('vmware-monitoring-state-'.$state['kind']);
+	if ($sensor['status_summary'] !== '') {
+		$status->setTitle($sensor['status_summary']);
+	}
 	$history_url = (new CUrl('history.php'))
 		->setArgument('action', HISTORY_VALUES)
 		->setArgument('itemids', [$sensor['itemid']]);
@@ -155,9 +161,8 @@ $make_sensor_row = static function (array $sensor) use ($data): array {
 	return [[
 		(new CLink($sensor['name'], $history_url))->addClass('vmware-monitoring-name'),
 		trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other'),
-		(new CSpan($state['text']))
-			->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$state['kind']),
+		VMwareFormatter::sensorReading($sensor['reading']),
+		$status,
 		$sensor['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, $sensor['lastclock']) : '-',
 		$collection,
 		$problems
@@ -168,6 +173,7 @@ $table = (new CTableInfo())
 	->setHeader([
 		$sort_header(_('Sensor'), 'name'),
 		$sort_header(_('Type'), 'type'),
+		_('Current reading'),
 		$sort_header(_('VMware status'), 'status'),
 		$sort_header(_('Last update'), 'lastclock'),
 		_('Collection'),

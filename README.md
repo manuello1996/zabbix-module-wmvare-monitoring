@@ -34,8 +34,8 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
   datastore information, sensor summaries, active problems, and the cluster's hypervisors.
 - Datastore overview with expandable per-hypervisor attachments below each unique datastore,
   including capacity, free space, latency, IOPS, and multipath information.
-- Hardware sensor page with VMware value-map states, related problems, collection errors, sorting,
-  and multi-type checkbox filtering.
+- Hardware sensor page with current readings and units, VMware value-map states, unhealthy-state
+  details, related problems, collection errors, sorting, and multi-type checkbox filtering.
 - vCenter Issues view based on the alarm data already collected for the vCenter.
 - Server-side pagination for large VM and datastore inventories. Sensor pagination is applied after
   its name, status, and type filters.

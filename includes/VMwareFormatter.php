@@ -55,6 +55,40 @@ class VMwareFormatter {
 		return $minutes.'m';
 	}
 
+	public static function sensorReading(?array $reading): string {
+		if ($reading === null || !isset($reading['value']) || !is_numeric($reading['value'])) {
+			return '-';
+		}
+
+		$value = (float) $reading['value'];
+		$absolute = abs($value);
+		$decimals = $absolute > 0
+			? max(0, min(6, 3 - (int) floor(log10($absolute))))
+			: 0;
+		$formatted = number_format($value, $decimals, '.', ' ');
+		if ($decimals > 0) {
+			$formatted = rtrim(rtrim($formatted, '0'), '.');
+		}
+
+		$units = trim((string) ($reading['units'] ?? ''));
+		$units = [
+			'Watts' => 'W',
+			'Volts' => 'V',
+			'Amps' => 'A',
+			'Hertz' => 'Hz',
+			'Degrees C' => '°C',
+			'Degrees F' => '°F',
+			'Percentage' => '%',
+			'Percent' => '%'
+		][$units] ?? $units;
+
+		if ($units === '%') {
+			return $formatted.$units;
+		}
+
+		return $units !== '' ? $formatted.' '.$units : $formatted;
+	}
+
 	public static function vcenterHealth($value): array {
 		return self::mappedState($value, [
 			'0' => ['Green', 'running'],

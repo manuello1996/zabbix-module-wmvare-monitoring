@@ -969,11 +969,36 @@ class VMwareCollector {
 			'selectTags' => ['tag', 'value'],
 			'selectTriggers' => ['triggerid', 'description', 'priority', 'value', 'status', 'lastchange'],
 			'hostids' => [$hostid],
-			'search' => ['key_' => 'vmware.hv.sensor.state['],
+			'search' => ['key_' => 'vmware.hv.sensor'],
 			'startSearch' => true,
 			'monitored' => true,
 			'webitems' => false
 		]) ?: [];
+
+		$raw_sensors = [];
+		foreach ($items as $item) {
+			if (!str_starts_with((string) $item['key_'], 'vmware.hv.sensors.get[')
+					|| (int) ($item['lastclock'] ?? 0) <= 0) {
+				continue;
+			}
+
+			$payload = json_decode((string) ($item['lastvalue'] ?? ''), true);
+			$sensors = is_array($payload) ? ($payload['val']['HostNumericSensorInfo'] ?? []) : [];
+			if (isset($sensors['name'])) {
+				$sensors = [$sensors];
+			}
+			if (!is_array($sensors)) {
+				continue;
+			}
+
+			foreach ($sensors as $sensor) {
+				if (!is_array($sensor) || trim((string) ($sensor['name'] ?? '')) === '') {
+					continue;
+				}
+				$sensor['_lastclock'] = (int) $item['lastclock'];
+				$raw_sensors[(string) $sensor['name']] = $sensor;
+			}
+		}
 
 		$result = [];
 		foreach ($items as $item) {
@@ -1012,12 +1037,32 @@ class VMwareCollector {
 			);
 
 			$has_value = (int) ($item['lastclock'] ?? 0) > 0;
+			$value = $has_value ? (string) $item['lastvalue'] : null;
+			$raw_sensor = $raw_sensors[$name] ?? [];
+			$reading = null;
+			if (isset($raw_sensor['currentReading']) && is_numeric($raw_sensor['currentReading'])) {
+				$modifier = is_numeric($raw_sensor['unitModifier'] ?? null)
+					? (int) $raw_sensor['unitModifier']
+					: 0;
+				$reading = [
+					'value' => (float) $raw_sensor['currentReading'] * (10 ** $modifier),
+					'units' => trim((string) ($raw_sensor['baseUnits'] ?? ''))
+				];
+			}
+			$status_summary = $value !== null && $value !== '1'
+				? trim((string) ($raw_sensor['healthState']['summary'] ?? ''))
+				: '';
 			$result[] = [
 				'itemid' => (string) $item['itemid'],
 				'name' => $name,
 				'type' => $type,
-				'value' => $has_value ? (string) $item['lastvalue'] : null,
-				'lastclock' => (int) ($item['lastclock'] ?? 0),
+				'value' => $value,
+				'reading' => $reading,
+				'status_summary' => $status_summary,
+				'lastclock' => max(
+					(int) ($item['lastclock'] ?? 0),
+					(int) ($raw_sensor['_lastclock'] ?? 0)
+				),
 				'state' => (int) ($item['state'] ?? ITEM_STATE_NORMAL),
 				'error' => (string) ($item['error'] ?? ''),
 				'problems' => $problems
