@@ -70,7 +70,9 @@ class VMwareFormatter {
 			$formatted = rtrim(rtrim($formatted, '0'), '.');
 		}
 
-		$units = trim((string) ($reading['units'] ?? ''));
+		$units = self::sensorReadingUsesDiscreteUnit($reading)
+			? ''
+			: trim((string) ($reading['units'] ?? ''));
 		$units = [
 			'Watts' => 'W',
 			'Volts' => 'V',
@@ -87,6 +89,19 @@ class VMwareFormatter {
 		}
 
 		return $units !== '' ? $formatted.' '.$units : $formatted;
+	}
+
+	public static function sensorReadingUsesDiscreteUnit(?array $reading): bool {
+		if ($reading === null) {
+			return false;
+		}
+
+		return in_array(mb_strtolower(trim((string) ($reading['units'] ?? ''))), [
+			'unspecified',
+			'assert-discrete',
+			'sensor-discrete',
+			'redundancy-discrete'
+		], true);
 	}
 
 	public static function vcenterHealth($value): array {

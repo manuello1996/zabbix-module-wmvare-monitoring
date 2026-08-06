@@ -976,29 +976,54 @@ class VMwareCollector {
 		]) ?: [];
 
 		$raw_sensors = [];
+		$compact_sensors = [];
 		foreach ($items as $item) {
-			if (!str_starts_with((string) $item['key_'], 'vmware.hv.sensors.get[')
-					|| (int) ($item['lastclock'] ?? 0) <= 0) {
+			$key = (string) $item['key_'];
+			$lastclock = (int) ($item['lastclock'] ?? 0);
+			if ($lastclock <= 0) {
 				continue;
 			}
 
-			$payload = json_decode((string) ($item['lastvalue'] ?? ''), true);
-			$sensors = is_array($payload) ? ($payload['val']['HostNumericSensorInfo'] ?? []) : [];
-			if (isset($sensors['name'])) {
-				$sensors = [$sensors];
-			}
-			if (!is_array($sensors)) {
-				continue;
-			}
-
-			foreach ($sensors as $sensor) {
-				if (!is_array($sensor) || trim((string) ($sensor['name'] ?? '')) === '') {
+			if ($key === 'vmware.hv.sensors.data') {
+				$sensors = json_decode((string) ($item['lastvalue'] ?? ''), true);
+				if (!is_array($sensors)) {
 					continue;
 				}
-				$sensor['_lastclock'] = (int) $item['lastclock'];
-				$raw_sensors[(string) $sensor['name']] = $sensor;
+				foreach ($sensors as $sensor) {
+					if (!is_array($sensor) || trim((string) ($sensor['name'] ?? '')) === '') {
+						continue;
+					}
+					$compact_sensors[(string) $sensor['name']] = [
+						'currentReading' => $sensor['value'] ?? null,
+						'unitModifier' => 0,
+						'baseUnits' => (string) ($sensor['units'] ?? ''),
+						'healthState' => ['summary' => (string) ($sensor['summary'] ?? '')],
+						'_lastclock' => $lastclock
+					];
+				}
+				continue;
+			}
+
+			if (str_starts_with($key, 'vmware.hv.sensors.get[')) {
+				$payload = json_decode((string) ($item['lastvalue'] ?? ''), true);
+				$sensors = is_array($payload) ? ($payload['val']['HostNumericSensorInfo'] ?? []) : [];
+				if (isset($sensors['name'])) {
+					$sensors = [$sensors];
+				}
+				if (!is_array($sensors)) {
+					continue;
+				}
+
+				foreach ($sensors as $sensor) {
+					if (!is_array($sensor) || trim((string) ($sensor['name'] ?? '')) === '') {
+						continue;
+					}
+					$sensor['_lastclock'] = $lastclock;
+					$raw_sensors[(string) $sensor['name']] = $sensor;
+				}
 			}
 		}
+		$raw_sensors = array_replace($raw_sensors, $compact_sensors);
 
 		$result = [];
 		foreach ($items as $item) {

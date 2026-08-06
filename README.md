@@ -106,6 +106,11 @@ Hardware sensors appear only when the official template has discovered the corre
 items. Enable the `{$VMWARE.HV.SENSOR.DISCOVERY}` macro for the required hypervisors and allow the
 discovery rule and items to collect their first values.
 
+Current readings and VMware status-detail tooltips require the compact dependent text item
+`vmware.hv.sensors.data` in the adapted VMware template. It stores one hour of compact sensor data
+per hypervisor; without it, the sensor health states and problems remain available but the
+**Current reading** column displays `-`.
+
 Counts labelled **Virtual machines** or **Total VMs** come from the VM totals reported by
 hypervisors. **Discovered VMs** counts only VM hosts created by Zabbix discovery; the two values can
 differ when discovery filters, permissions, or data freshness differ.

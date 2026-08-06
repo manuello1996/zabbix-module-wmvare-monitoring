@@ -157,11 +157,17 @@ $make_sensor_row = static function (array $sensor) use ($data): array {
 	$row_state = $sensor['state'] === ITEM_STATE_NOTSUPPORTED
 		? 'unsupported'
 		: ($sensor['value'] === null ? '0' : (string) $sensor['value']);
+	$reading = new CSpan(VMwareFormatter::sensorReading($sensor['reading']));
+	if (VMwareFormatter::sensorReadingUsesDiscreteUnit($sensor['reading'])) {
+		$reading
+			->addClass(ZBX_STYLE_GREY)
+			->setTitle(_('Discrete ESXi sensor value; no physical unit is provided.'));
+	}
 
 	return [[
 		(new CLink($sensor['name'], $history_url))->addClass('vmware-monitoring-name'),
 		trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other'),
-		VMwareFormatter::sensorReading($sensor['reading']),
+		$reading,
 		$status,
 		$sensor['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, $sensor['lastclock']) : '-',
 		$collection,
