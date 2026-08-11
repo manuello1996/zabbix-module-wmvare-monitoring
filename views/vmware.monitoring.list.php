@@ -3,6 +3,7 @@
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 
 $this->includeJsFile('vmware.monitoring.list.js.php');
+$this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
 $makeStat = static function (string $modifier, string $label, $value): CDiv {
 	return (new CDiv([
@@ -157,7 +158,9 @@ foreach ($data['vcenters'] as $vcenter) {
 
 	$name_cell = (new CDiv([
 			(new CSpan())->addClass('vmware-monitoring-container-icon'),
-			(new CLink($vcenter['name'], $url))->addClass('vmware-monitoring-name')
+			(new CLink($vcenter['name'], $url))
+				->addClass('vmware-monitoring-name')
+				->setAttribute('data-vmware-monitoring-host-menu', $vcenter['hostid'])
 		]))->addClass('vmware-monitoring-name-cell');
 	if ($location_path) {
 		$name_cell
