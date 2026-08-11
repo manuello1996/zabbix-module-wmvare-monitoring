@@ -122,18 +122,51 @@ $table = (new CTableInfo())
 	])
 	->setNoDataMessage(_('No vCenter hosts found. Link the official "VMware" template to a monitored host.'));
 
+$previous_location_path = [];
 foreach ($data['vcenters'] as $vcenter) {
+	$location_path = $vcenter['location_path'] ?? [];
+	if ($location_path) {
+		$common_parts = 0;
+		$maximum_common_parts = min(count($previous_location_path), count($location_path));
+		while ($common_parts < $maximum_common_parts
+				&& $previous_location_path[$common_parts] === $location_path[$common_parts]) {
+			$common_parts++;
+		}
+
+		for ($depth = $common_parts; $depth < count($location_path); $depth++) {
+			$location_group = (new CDiv(
+				(new CSpan($location_path[$depth]))->addClass('vmware-monitoring-location-name')
+			))
+				->addClass('vmware-monitoring-location-group')
+				->setAttribute('style', '--vmware-monitoring-location-depth: '.$depth);
+			$table->addRow([
+				(new CCol($location_group))->setColSpan(9)
+			], 'vmware-monitoring-location-row');
+		}
+		$previous_location_path = $location_path;
+	}
+	else {
+		$previous_location_path = [];
+	}
+
 	$url = (new CUrl('zabbix.php'))
 		->setArgument('action', 'vmware.monitoring.view')
 		->setArgument('filter_hostid', [$vcenter['hostid']])
 		->setArgument('filter_set', 1);
 	$health = VMwareFormatter::vcenterHealth($vcenter['metrics']['health']);
 
-	$table->addRow([
-		(new CDiv([
+	$name_cell = (new CDiv([
 			(new CSpan())->addClass('vmware-monitoring-container-icon'),
 			(new CLink($vcenter['name'], $url))->addClass('vmware-monitoring-name')
-		]))->addClass('vmware-monitoring-name-cell'),
+		]))->addClass('vmware-monitoring-name-cell');
+	if ($location_path) {
+		$name_cell
+			->addClass('vmware-monitoring-location-vcenter')
+			->setAttribute('style', '--vmware-monitoring-location-depth: '.count($location_path));
+	}
+
+	$table->addRow([
+		$name_cell,
 		(new CSpan($health['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$health['kind']),

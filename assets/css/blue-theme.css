@@ -626,6 +626,28 @@
 	vertical-align: middle;
 }
 
+#vmware-monitoring-vcenters-table .vmware-monitoring-location-row td {
+	padding: 8px 12px;
+	background-color: var(--vmware-monitoring-surface-muted);
+	border-top: 1px solid var(--vmware-monitoring-card-border);
+}
+
+.vmware-monitoring-location-group {
+	box-sizing: border-box;
+	padding-left: calc(var(--vmware-monitoring-location-depth, 0) * 20px);
+	color: var(--vmware-monitoring-text);
+}
+
+.vmware-monitoring-location-name {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.vmware-monitoring-location-vcenter {
+	box-sizing: border-box;
+	padding-left: calc(var(--vmware-monitoring-location-depth, 0) * 20px);
+}
+
 .vmware-monitoring-name-cell {
 	display: flex;
 	align-items: center;

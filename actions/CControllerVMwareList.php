@@ -17,6 +17,7 @@ use Modules\VMwareMonitoring\Includes\VMwareCollector;
 class CControllerVMwareList extends CController {
 	public const PROFILE_GROUPIDS = 'web.vmware.monitoring.list.filter.groupids';
 	public const PROFILE_HOSTIDS = 'web.vmware.monitoring.list.filter.hostids';
+	private const LOCATION_MACRO = '{$VMWARE.LOCATION}';
 
 	protected function init(): void {
 		$this->disableCsrfValidation();
@@ -75,6 +76,7 @@ class CControllerVMwareList extends CController {
 			$hosts = API::Host()->get([
 				'output' => ['hostid', 'name', 'status'],
 				'selectInventory' => ['notes'],
+				'selectMacros' => ['macro', 'value', 'type'],
 				'hostids' => $vcenter_hostids,
 				'preservekeys' => true,
 				'sortfield' => 'name',
@@ -84,6 +86,7 @@ class CControllerVMwareList extends CController {
 			if ($hosts === false) {
 				$hosts = API::Host()->get([
 					'output' => ['hostid', 'name', 'status'],
+					'selectMacros' => ['macro', 'value', 'type'],
 					'hostids' => $vcenter_hostids,
 					'preservekeys' => true,
 					'sortfield' => 'name'
@@ -95,6 +98,20 @@ class CControllerVMwareList extends CController {
 
 		foreach ($hosts as &$host) {
 			$host += ['inventory' => []];
+			$host['location_path'] = [];
+			foreach ($host['macros'] ?? [] as $macro) {
+				if (($macro['macro'] ?? '') !== self::LOCATION_MACRO
+						|| (int) ($macro['type'] ?? ZBX_MACRO_TYPE_TEXT) !== ZBX_MACRO_TYPE_TEXT) {
+					continue;
+				}
+
+				$host['location_path'] = array_values(array_filter(
+					array_map('trim', explode(',', (string) ($macro['value'] ?? ''))),
+					static fn(string $part): bool => $part !== ''
+				));
+				break;
+			}
+			unset($host['macros']);
 		}
 		unset($host);
 
@@ -112,6 +129,30 @@ class CControllerVMwareList extends CController {
 		}
 
 		$vcenters = array_values($vcenters);
+		usort($vcenters, static function (array $left, array $right): int {
+			$left_path = $left['location_path'] ?? [];
+			$right_path = $right['location_path'] ?? [];
+
+			if (!$left_path || !$right_path) {
+				if (!$left_path && !$right_path) {
+					return strnatcasecmp($left['name'], $right['name'])
+						?: (string) $left['hostid'] <=> (string) $right['hostid'];
+				}
+				return !$left_path ? 1 : -1;
+			}
+
+			$parts = min(count($left_path), count($right_path));
+			for ($index = 0; $index < $parts; $index++) {
+				$comparison = strnatcasecmp($left_path[$index], $right_path[$index]);
+				if ($comparison !== 0) {
+					return $comparison;
+				}
+			}
+
+			return count($left_path) <=> count($right_path)
+				?: strnatcasecmp($left['name'], $right['name'])
+				?: (string) $left['hostid'] <=> (string) $right['hostid'];
+		});
 		$paging = CPagerHelper::paginate((int) $this->getInput('page', 1), $vcenters, ZBX_SORT_UP,
 			(new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')
 		);

@@ -11,6 +11,7 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
 
 - Multi-vCenter overview with health, product, version, hypervisor, VM, datastore, and aggregated
   vCenter, hypervisor, and discovered-VM problem summaries.
+- Optional nested vCenter location groups from the host macro `{$VMWARE.LOCATION}`.
 - vCenter detail pages with lazy-loaded tabs, so detailed data is requested only when opened.
 - Overview embeds the standard Zabbix Problems widget table in recent-problems mode with operational
   data shown separately, scoped to the vCenter and its discovered hypervisor and VM hosts.
@@ -101,6 +102,10 @@ page. Do not copy the repository's `.git` directory into a packaged production i
    access to their sensor details.
 5. Use the filters before paging through large environments. Filter and sort selections are kept
    when changing pages.
+
+To group the main vCenter table, define `{$VMWARE.LOCATION}` directly on a vCenter host. A simple
+value such as `USA` creates one group. Comma-separated values create nested groups, for example
+`USA, New York`. vCenters without the macro remain ungrouped.
 
 Hardware sensors appear only when the official template has discovered the corresponding sensor
 items. Enable the `{$VMWARE.HV.SENSOR.DISCOVERY}` macro for the required hypervisors and allow the
