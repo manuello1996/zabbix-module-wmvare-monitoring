@@ -179,6 +179,7 @@ class VMwareCollector {
 		return $result;
 	}
 
+
 	public static function summary(string $vcenter_hostid, bool $include_datastores = true,
 			bool $include_problems = true): array {
 		$topology = self::discoveredTopology($vcenter_hostid);
@@ -418,9 +419,10 @@ class VMwareCollector {
 			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
 		$topology = self::discoveredTopology($vcenter_hostid, true, false);
 		$hypervisors = $topology['hypervisors'];
-		$index_keys = [
-			'vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cluster'
-		];
+		$index_keys = [];
+		if ($search !== '' || $sort === 'cluster') {
+			$index_keys['vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]'] = 'cluster';
+		}
 		foreach (match ($sort) {
 			'cpu' => ['cpu'],
 			'memory' => ['memory_used', 'memory_total'],
@@ -434,7 +436,9 @@ class VMwareCollector {
 				$index_keys[$key] = $field;
 			}
 		}
-		$index_metrics = self::itemsByKeys(array_keys($hypervisors), $index_keys);
+		$index_metrics = $index_keys
+			? self::itemsByKeys(array_keys($hypervisors), $index_keys)
+			: [];
 
 		if ($search !== '') {
 			$needle = mb_strtolower($search);
@@ -539,7 +543,7 @@ class VMwareCollector {
 			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
 		$topology = self::discoveredTopology($vcenter_hostid, true, false);
 		$host_names = array_column($topology['hypervisors'], 'name', 'hostid');
-		$attachments = self::datastores(array_keys($topology['hypervisors']), true);
+		$attachments = self::datastores(array_keys($topology['hypervisors']), false);
 
 		foreach ($attachments as &$attachment) {
 			$attachment['hypervisor'] = $host_names[$attachment['hostid']] ?? '';
@@ -559,8 +563,26 @@ class VMwareCollector {
 		$unique_page = self::paginateArray($unique, $page, $per_page);
 		$unique_page['rows'] = array_values($unique_page['rows']);
 
-		$attachments_by_datastore = [];
+		$page_identities = array_fill_keys(array_column($unique_page['rows'], 'identity'), true);
+		$detail_hostids = [];
 		foreach ($attachments as $attachment) {
+			if (isset($page_identities[self::datastoreIdentity($attachment)])) {
+				$detail_hostids[(string) $attachment['hostid']] = true;
+			}
+		}
+		$detail_attachments = self::datastores(array_keys($detail_hostids), true);
+		$detail_attachments = array_values(array_filter($detail_attachments,
+			static fn(array $attachment): bool => isset(
+				$page_identities[self::datastoreIdentity($attachment)]
+			)
+		));
+		foreach ($detail_attachments as &$attachment) {
+			$attachment['hypervisor'] = $host_names[$attachment['hostid']] ?? '';
+		}
+		unset($attachment);
+
+		$attachments_by_datastore = [];
+		foreach ($detail_attachments as $attachment) {
 			$attachments_by_datastore[self::datastoreIdentity($attachment)][] = $attachment;
 		}
 		foreach ($attachments_by_datastore as &$datastore_attachments) {
@@ -961,23 +983,42 @@ class VMwareCollector {
 		return $items;
 	}
 
-	public static function sensors(string $hostid): array {
-		$items = API::Item()->get([
+	public static function sensors(string $hostid, ?array $itemids = null, bool $include_problems = true,
+			bool $include_readings = true): array {
+		$options = [
 			'output' => [
 				'itemid', 'name', 'key_', 'lastvalue', 'lastclock', 'status', 'state', 'error'
 			],
 			'selectTags' => ['tag', 'value'],
-			'selectTriggers' => ['triggerid', 'description', 'priority', 'value', 'status', 'lastchange'],
 			'hostids' => [$hostid],
-			'search' => ['key_' => 'vmware.hv.sensor'],
+			'search' => ['key_' => 'vmware.hv.sensor.state['],
 			'startSearch' => true,
 			'monitored' => true,
 			'webitems' => false
-		]) ?: [];
+		];
+		if ($itemids !== null) {
+			$options['itemids'] = $itemids;
+		}
+		if ($include_problems) {
+			$options['selectTriggers'] = [
+				'triggerid', 'description', 'priority', 'value', 'status', 'lastchange'
+			];
+		}
+		$items = API::Item()->get($options) ?: [];
 
 		$raw_sensors = [];
 		$compact_sensors = [];
-		foreach ($items as $item) {
+		$raw_items = $include_readings
+			? (API::Item()->get([
+				'output' => ['key_', 'lastvalue', 'lastclock'],
+				'hostids' => [$hostid],
+				'search' => ['key_' => 'vmware.hv.sensors.'],
+				'startSearch' => true,
+				'monitored' => true,
+				'webitems' => false
+			]) ?: [])
+			: [];
+		foreach ($raw_items as $item) {
 			$key = (string) $item['key_'];
 			$lastclock = (int) ($item['lastclock'] ?? 0);
 			if ($lastclock <= 0) {
@@ -1027,11 +1068,6 @@ class VMwareCollector {
 
 		$result = [];
 		foreach ($items as $item) {
-			// Do not include the separate sensor-health rollup item.
-			if (!str_starts_with((string) $item['key_'], 'vmware.hv.sensor.state[')) {
-				continue;
-			}
-
 			$name = (string) $item['name'];
 			if (preg_match('/^Sensor \[(.*)\] health state$/u', $name, $matches)) {
 				$name = $matches[1];
@@ -1177,7 +1213,7 @@ class VMwareCollector {
 				];
 			}
 
-			if (!$with_metrics || !self::hasRecentValue($item)) {
+			if (!self::hasRecentValue($item)) {
 				continue;
 			}
 

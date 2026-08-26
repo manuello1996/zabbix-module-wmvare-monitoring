@@ -1,6 +1,7 @@
 <?php declare(strict_types = 0);
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
+use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
@@ -100,12 +101,12 @@ $host_enabled = (int) $data['host']['status'] === HOST_STATUS_MONITORED;
 
 $page->addItem(
 	(new CDiv([
+		VMwareBreadcrumb::make([
+			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
+			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
+			(new CSpan($data['host']['name']))->addClass('vmware-monitoring-breadcrumb-current')
+		]),
 		(new CDiv([
-			(new CDiv([
-				new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
-				(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
-				(new CSpan($data['host']['name']))->addClass('vmware-monitoring-breadcrumb-current')
-			]))->addClass('vmware-monitoring-breadcrumb'),
 			(new CDiv([
 				(new CSpan($host_enabled ? _('Enabled') : _('Disabled')))
 					->addClass($host_enabled ? ZBX_STYLE_GREEN : ZBX_STYLE_RED),
@@ -117,9 +118,10 @@ $page->addItem(
 			(new CDiv([
 				new CSpan([_('Version').': ', $data['vcenter_metrics']['version'] ?? '-']),
 				new CSpan([_('Product').': ', $data['vcenter_metrics']['fullname'] ?? '-'])
-			]))->addClass('vmware-monitoring-topbar-meta')
-		]))->addClass('vmware-monitoring-topbar-info'),
-		(new CDiv([$makeIconButton('filter', _('Toggle filters'))]))->addClass('vmware-monitoring-topbar-actions')
+			]))->addClass('vmware-monitoring-topbar-meta'),
+			(new CDiv([$makeIconButton('filter', _('Toggle filters'))]))
+				->addClass('vmware-monitoring-topbar-actions')
+		]))->addClass('vmware-monitoring-topbar-context')
 	]))->addClass('vmware-monitoring-topbar')
 );
 
@@ -161,6 +163,7 @@ $page->addItem(
 	))
 		->setId('vmware-monitoring-panel')
 		->addClass('vmware-monitoring-panel')
+		->setAttribute('role', 'tabpanel')
 		->setAttribute('aria-live', 'polite')
 );
 
@@ -169,5 +172,8 @@ $page->show();
 (new CScriptTag('vmware_monitoring.init('.json_encode([
 	'hostid' => $data['host']['hostid'],
 	'tab' => $data['initial_tab'],
-	'search' => $data['initial_search']
+	'page' => $data['initial_page'],
+	'search' => $data['initial_search'],
+	'sort' => $data['initial_sort'],
+	'sortorder' => $data['initial_sortorder']
 ]).');'))->setOnDocumentReady()->show();

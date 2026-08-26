@@ -6,7 +6,7 @@ window.vmware_monitoring_list = new class {
 		this.table = document.getElementById('vmware-monitoring-vcenters-table');
 		this.table?.addEventListener('contextmenu', event => this.openHostMenu(event));
 		if (this.refresh > 0) {
-			window.setTimeout(() => window.location.reload(), this.refresh * 1000);
+			PageRefresh.init(this.refresh * 1000);
 		}
 
 		const status = document.getElementById('vmware-monitoring-refresh-status');

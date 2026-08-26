@@ -1,6 +1,7 @@
 <?php declare(strict_types = 0);
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
+use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 
 $this->includeJsFile('vmware.monitoring.list.js.php');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
@@ -44,9 +45,9 @@ $page = (new CHtmlPage())
 
 $page->addItem(
 	(new CDiv(
-		(new CDiv((new CSpan(_('vCenters')))->addClass('vmware-monitoring-breadcrumb-current')))
-			->addClass('vmware-monitoring-breadcrumb')
-			->setAttribute('aria-label', _('Breadcrumb'))
+		VMwareBreadcrumb::make([
+			(new CSpan(_('vCenters')))->addClass('vmware-monitoring-breadcrumb-current')
+		])
 	))->addClass('vmware-monitoring-topbar')
 );
 
@@ -97,13 +98,11 @@ $page->addItem(
 
 $page->addItem(
 	(new CDiv([
-		(new CTag('h4', true, _('VMware environment overview')))->addClass('vmware-monitoring-section-title'),
 		(new CDiv([
 			$makeStat('nodes', _('vCenters'), $data['totals']['vcenters']),
-			$makeStat('running', _('Hypervisors'), $data['totals']['hypervisors']),
+			$makeStat('total', _('Hypervisors'), $data['totals']['hypervisors']),
 			$makeStat('total', _('Virtual machines'), $data['totals']['vms']),
-			$makeStat('memory', _('Unique datastores'), $data['totals']['datastores']),
-			$makeStat('memory', _('Datastore attachments'), $data['totals']['datastore_attachments'])
+			$makeStat('memory', _('Unique datastores'), $data['totals']['datastores'])
 		]))->addClass('vmware-monitoring-statstrip')
 	]))->addClass('vmware-monitoring-section')
 );
@@ -118,7 +117,6 @@ $table = (new CTableInfo())
 		_('Hypervisors'),
 		_('Virtual machines'),
 		_('Unique datastores'),
-		_('Attachments'),
 		_('Notes')
 	])
 	->setNoDataMessage(_('No vCenter hosts found. Link the official "VMware" template to a monitored host.'));
@@ -141,7 +139,7 @@ foreach ($data['vcenters'] as $vcenter) {
 				->addClass('vmware-monitoring-location-group')
 				->setAttribute('style', '--vmware-monitoring-location-depth: '.$depth);
 			$table->addRow([
-				(new CCol($location_group))->setColSpan(9)
+				(new CCol($location_group))->setColSpan(8)
 			], 'vmware-monitoring-location-row');
 		}
 		$previous_location_path = $location_path;
@@ -178,7 +176,6 @@ foreach ($data['vcenters'] as $vcenter) {
 		(string) $vcenter['hypervisors'],
 		(string) $vcenter['vms'],
 		(string) $vcenter['datastores'],
-		(string) $vcenter['datastore_attachments'],
 		$vcenter['inventory']['notes'] ?? ''
 	]);
 }
@@ -187,7 +184,6 @@ $page
 	->addItem(
 		(new CDiv([
 			(new CTag('h4', true, [
-				_('vCenters'),
 				(new CSpan())->setId('vmware-monitoring-refresh-status')->addClass('vmware-monitoring-refresh-status')
 			]))->addClass('vmware-monitoring-section-title'),
 			$table,

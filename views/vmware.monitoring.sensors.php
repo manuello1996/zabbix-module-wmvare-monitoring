@@ -1,6 +1,7 @@
 <?php declare(strict_types = 0);
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
+use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 
 $page = (new CHtmlPage())
 	->setTitle(_('VMware sensors'))
@@ -18,7 +19,7 @@ $hypervisors_url = (new CUrl('zabbix.php'))
 
 $page->addItem(
 	(new CDiv(
-		(new CDiv([
+		VMwareBreadcrumb::make([
 			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			new CLink($data['vcenter']['name'], $vcenter_url),
@@ -26,7 +27,7 @@ $page->addItem(
 			new CLink($data['host']['name'], $hypervisors_url),
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			(new CSpan(_('Sensors')))->addClass('vmware-monitoring-breadcrumb-current')
-		]))->addClass('vmware-monitoring-breadcrumb')
+		])
 	))->addClass('vmware-monitoring-topbar')
 );
 

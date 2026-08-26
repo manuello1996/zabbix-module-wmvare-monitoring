@@ -1,6 +1,7 @@
 <?php declare(strict_types = 0);
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
+use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 use Modules\VMwareMonitoring\Includes\VMwareTabRenderer;
 
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
@@ -37,7 +38,7 @@ $cluster_state = $cluster['is_standalone']
 	: VMwareFormatter::hypervisorHealth($cluster['status']);
 $page->addItem(
 	(new CDiv([
-		(new CDiv([
+		VMwareBreadcrumb::make([
 			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			new CLink($data['vcenter']['name'], $vcenter_url),
@@ -45,7 +46,7 @@ $page->addItem(
 			new CLink(_('Clusters'), $clusters_url),
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			(new CSpan($cluster['name']))->addClass('vmware-monitoring-breadcrumb-current')
-		]))->addClass('vmware-monitoring-breadcrumb'),
+		]),
 		(new CSpan($cluster_state['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$cluster_state['kind'])

@@ -12,7 +12,12 @@ class Module extends CModule {
 			->findOrAdd(_('Monitoring'))
 			->getSubmenu()
 			->insertAfter(_('Latest data'),
-				(new CMenuItem(_('VMware')))->setAction('vmware.monitoring.list')
+				(new CMenuItem(_('VMware')))
+					->setId('main-menu-vmware')
+					->setAction('vmware.monitoring.list')
+					->setAliases([
+						'vmware.monitoring.view', 'vmware.monitoring.cluster', 'vmware.monitoring.sensors'
+					])
 			);
 	}
 }

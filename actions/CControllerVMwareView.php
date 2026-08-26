@@ -27,7 +27,10 @@ class CControllerVMwareView extends CController {
 				'filter_set' => 'in 1',
 				'filter_rst' => 'in 1',
 				'tab' => 'in overview,hypervisors,vms,datastores,clusters,alarms',
-				'search' => 'string'
+				'page' => 'ge 1',
+				'search' => 'string',
+				'sort' => 'in name,cluster,cpu,memory,vms,uptime,version,total,free,attachments',
+				'sortorder' => 'in '.ZBX_SORT_UP.','.ZBX_SORT_DOWN
 			]);
 
 		if (!$ret) {
@@ -116,7 +119,10 @@ class CControllerVMwareView extends CController {
 
 		$data = [
 			'initial_tab' => (string) $this->getInput('tab', 'overview'),
+			'initial_page' => (int) $this->getInput('page', 1),
 			'initial_search' => trim((string) $this->getInput('search', '')),
+			'initial_sort' => (string) $this->getInput('sort', 'name'),
+			'initial_sortorder' => (string) $this->getInput('sortorder', ZBX_SORT_UP),
 			'filter' => [
 				'groups' => array_values($groups),
 				'hostid' => $hostid

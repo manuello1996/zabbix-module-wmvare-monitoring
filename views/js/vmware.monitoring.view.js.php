@@ -5,23 +5,27 @@ window.vmware_monitoring = new class {
 		this.hostid = String(config.hostid || '');
 		this.panel = document.getElementById('vmware-monitoring-panel');
 		this.activeTab = String(config.tab || 'overview');
-		this.cache = new Map();
 		this.state = new Map();
 		this.searchTimer = null;
+		this.request = null;
 
 		this.bindTabs();
 		this.bindFilters();
 		this.bindPanel();
 		this.bindProblemEvents();
-		if (this.activeTab === 'hypervisors') {
-			this.getState('hypervisors').search = String(config.search || '').trim();
-		}
-		this.activateTab(this.activeTab);
+		Object.assign(this.getState(this.activeTab), {
+			page: Math.max(1, Number(config.page || 1)),
+			search: String(config.search || '').trim(),
+			sort: String(config.sort || 'name'),
+			sortorder: config.sortorder === 'DESC' ? 'DESC' : 'ASC'
+		});
+		window.addEventListener('popstate', () => this.restoreUrlState());
+		this.activateTab(this.activeTab, 'replace');
 	}
 
 	bindTabs() {
 		document.querySelectorAll('[data-vmware-monitoring-tab]').forEach(tab => {
-			const activate = () => this.activateTab(tab.dataset.vmwareMonitoringTab);
+			const activate = () => this.activateTab(tab.dataset.vmwareMonitoringTab, 'push');
 			tab.addEventListener('click', activate);
 			tab.addEventListener('keydown', event => {
 				if (event.key === 'Enter' || event.key === ' ') {
@@ -32,13 +36,16 @@ window.vmware_monitoring = new class {
 		});
 	}
 
-	activateTab(key) {
+	activateTab(key, historyMode = null) {
 		this.activeTab = key;
 		document.querySelectorAll('[data-vmware-monitoring-tab]').forEach(tab => {
 			const active = tab.dataset.vmwareMonitoringTab === key;
 			tab.classList.toggle('vmware-monitoring-tab-active', active);
 			tab.setAttribute('aria-selected', active ? 'true' : 'false');
 		});
+		if (historyMode !== null) {
+			this.updateUrl(historyMode);
+		}
 		this.loadTab(key);
 	}
 
@@ -80,7 +87,8 @@ window.vmware_monitoring = new class {
 				return;
 			}
 			state.page = page;
-			this.loadTab(this.activeTab, true);
+			this.updateUrl('push');
+			this.loadTab(this.activeTab);
 		});
 
 		this.panel.addEventListener('input', event => {
@@ -92,7 +100,8 @@ window.vmware_monitoring = new class {
 				const state = this.getState(this.activeTab);
 				state.search = event.target.value.trim();
 				state.page = 1;
-				this.loadTab(this.activeTab, true);
+				this.updateUrl('push');
+				this.loadTab(this.activeTab);
 			}, 350);
 		});
 
@@ -136,15 +145,13 @@ window.vmware_monitoring = new class {
 		$.subscribe('acknowledge.create', (event, response) => {
 			clearMessages();
 			addMessage(makeMessageBox('good', [], response.success.title));
-			this.cache.clear();
 			if (this.activeTab === 'overview') {
-				this.loadTab('overview', true);
+				this.loadTab('overview');
 			}
 		});
 		$.subscribe('event.rank_change', () => {
-			this.cache.clear();
 			if (this.activeTab === 'overview') {
-				this.loadTab('overview', true);
+				this.loadTab('overview');
 			}
 		});
 	}
@@ -161,18 +168,56 @@ window.vmware_monitoring = new class {
 		state.sortorder = state.sort === field && state.sortorder === 'ASC' ? 'DESC' : 'ASC';
 		state.sort = field;
 		state.page = 1;
-		this.loadTab(this.activeTab, true);
+		this.updateUrl('push');
+		this.loadTab(this.activeTab);
 	}
 
-	async loadTab(tab, force = false) {
-		const state = this.getState(tab);
-		const cacheKey = `${tab}|${state.page}|${state.search}|${state.sort}|${state.sortorder}`;
-		if (!force && this.cache.has(cacheKey)) {
-			this.render(tab, this.cache.get(cacheKey));
+	updateUrl(mode) {
+		const state = this.getState(this.activeTab);
+		const url = new URL(window.location.href);
+		url.searchParams.set('tab', this.activeTab);
+		this.setUrlArgument(url, 'page', state.page > 1 ? state.page : '');
+		this.setUrlArgument(url, 'search', state.search);
+		this.setUrlArgument(url, 'sort', state.sort !== 'name' ? state.sort : '');
+		this.setUrlArgument(url, 'sortorder', state.sortorder !== 'ASC' ? state.sortorder : '');
+		window.history[mode === 'replace' ? 'replaceState' : 'pushState']({}, '', url);
+	}
+
+	setUrlArgument(url, name, value) {
+		if (value === '') {
+			url.searchParams.delete(name);
+		}
+		else {
+			url.searchParams.set(name, String(value));
+		}
+	}
+
+	restoreUrlState() {
+		const params = new URL(window.location.href).searchParams;
+		const tab = params.get('tab') || 'overview';
+		const element = document.querySelector(`[data-vmware-monitoring-tab="${CSS.escape(tab)}"]`);
+		if (element === null) {
 			return;
 		}
 
-		this.panel.innerHTML = `<div class="vmware-monitoring-loading"><?= _('Loading...') ?></div>`;
+		Object.assign(this.getState(tab), {
+			page: Math.max(1, Number(params.get('page') || 1)),
+			search: String(params.get('search') || '').trim(),
+			sort: String(params.get('sort') || 'name'),
+			sortorder: params.get('sortorder') === 'DESC' ? 'DESC' : 'ASC'
+		});
+		this.activateTab(tab);
+	}
+
+	async loadTab(tab) {
+		const state = this.getState(tab);
+		this.request?.abort();
+		const request = new AbortController();
+		this.request = request;
+		this.panel.replaceChildren(Object.assign(document.createElement('div'), {
+			className: 'vmware-monitoring-loading',
+			textContent: <?= json_encode(_('Loading...')) ?>
+		}));
 		const url = new Curl('zabbix.php');
 		url.setArgument('action', 'vmware.monitoring.tab');
 		url.setArgument('hostid', this.hostid);
@@ -185,18 +230,30 @@ window.vmware_monitoring = new class {
 		}
 
 		try {
-			const response = await fetch(url.getUrl(), {cache: 'no-store'});
+			const response = await fetch(url.getUrl(), {cache: 'no-store', signal: request.signal});
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
 			const payload = await response.json();
 			if ('error' in payload) {
 				throw new Error(payload.error.title || '');
 			}
-			this.cache.set(cacheKey, payload.html || '');
 			this.render(tab, payload.html || '');
 		}
 		catch (error) {
+			if (error.name === 'AbortError') {
+				return;
+			}
 			if (this.activeTab === tab) {
-				this.panel.innerHTML =
-					`<div class="msg-bad"><?= _('Unable to load VMware data for this tab.') ?></div>`;
+				this.panel.replaceChildren(Object.assign(document.createElement('div'), {
+					className: 'msg-bad',
+					textContent: <?= json_encode(_('Unable to load VMware data for this tab.')) ?>
+				}));
+			}
+		}
+		finally {
+			if (this.request === request) {
+				this.request = null;
 			}
 		}
 	}
@@ -247,12 +304,12 @@ window.vmware_monitoring = new class {
 
 		svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 		svg.setAttribute('preserveAspectRatio', 'none');
-		svg.setAttribute('aria-hidden', 'true');
 		svg.classList.add('vmware-monitoring-spark-svg');
 
-		if (history.length < 2) {
+		if (history.length === 0) {
+			target.setAttribute('aria-label', <?= json_encode(_('No CPU history data')) ?>);
 			const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-			const y = height - pad - 2;
+			const y = height - pad;
 			line.setAttribute('x1', '0');
 			line.setAttribute('y1', String(y));
 			line.setAttribute('x2', String(width));
@@ -263,26 +320,47 @@ window.vmware_monitoring = new class {
 		else {
 			const values = history.map(point => Number(point[1]));
 			const min = Math.min(...values);
-			const range = Math.max(...values) - min;
+			const max = Math.max(...values);
+			const current = values[values.length - 1];
+			const label = [
+				`${<?= json_encode(_('Minimum')) ?>}: ${min.toFixed(1)}%`,
+				`${<?= json_encode(_('Current')) ?>}: ${current.toFixed(1)}%`,
+				`${<?= json_encode(_('Maximum')) ?>}: ${max.toFixed(1)}%`
+			].join(', ');
+			target.setAttribute('aria-label', label);
+			const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+			title.textContent = label;
+			svg.append(title);
+
 			const coordinates = values.map((value, index) => {
-				const x = index / (values.length - 1) * width;
-				const y = range > 0
-					? height - pad - ((value - min) / range) * (height - 2 * pad)
-					: height / 2;
+				const x = values.length > 1 ? index / (values.length - 1) * width : width;
+				const bounded = Math.max(0, Math.min(100, value));
+				const y = height - pad - bounded / 100 * (height - 2 * pad);
 				return `${x.toFixed(1)},${y.toFixed(1)}`;
 			});
 
-			const fill = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-			fill.setAttribute('points',
-				`0,${height - 1} ${coordinates.join(' ')} ${width},${height - 1}`);
-			fill.classList.add('vmware-monitoring-spark-fill');
-			svg.append(fill);
+			if (values.length === 1) {
+				const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+				const [x, y] = coordinates[0].split(',');
+				point.setAttribute('cx', x);
+				point.setAttribute('cy', y);
+				point.setAttribute('r', '2');
+				point.classList.add('vmware-monitoring-spark-point');
+				svg.append(point);
+			}
+			else {
+				const fill = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+				fill.setAttribute('points',
+					`0,${height - pad} ${coordinates.join(' ')} ${width},${height - pad}`);
+				fill.classList.add('vmware-monitoring-spark-fill');
+				svg.append(fill);
 
-			const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-			line.setAttribute('points', coordinates.join(' '));
-			line.setAttribute('fill', 'none');
-			line.classList.add('vmware-monitoring-spark-line');
-			svg.append(line);
+				const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+				line.setAttribute('points', coordinates.join(' '));
+				line.setAttribute('fill', 'none');
+				line.classList.add('vmware-monitoring-spark-line');
+				svg.append(line);
+			}
 		}
 
 		target.replaceChildren(svg);

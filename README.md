@@ -82,7 +82,7 @@ reliably with a vCenter because they have no originating discovery relationship.
 3. In Zabbix, open **Administration → General → Modules**.
 4. Select **Scan directory**.
 5. Enable **VMware Monitoring**.
-6. Open **Monitoring → VMware**.
+6. Open **Monitoring → VMware → Overview**.
 
 No Composer, npm, Node.js, compilation, database migration, or additional VMware credentials are
 required. The module is loaded directly by the Zabbix frontend.
@@ -94,7 +94,7 @@ page. Do not copy the repository's `.git` directory into a packaged production i
 
 1. Configure VMware monitoring with the official Zabbix 7.0 VMware template and wait for its
    hypervisor and VM discovery rules to create hosts.
-2. Open **Monitoring → VMware** to see every accessible vCenter that has a monitored
+2. Open **Monitoring → VMware → Overview** to see every accessible vCenter that has a monitored
    `vmware.version[{$VMWARE.URL}]` item.
 3. Select a vCenter and use the Overview, Clusters, Hypervisors, Discovered VMs, Datastores, and
    vCenter Issues tabs.

@@ -66,7 +66,12 @@ class CControllerVMwareSensors extends CController {
 		$status_filter = (string) $this->getInput('filter_status', 'all');
 		$sort = (string) $this->getInput('sort', 'name');
 		$sortorder = (string) $this->getInput('sortorder', ZBX_SORT_UP);
-		$all_sensors = VMwareCollector::sensors($hostid);
+		$all_sensors = VMwareCollector::sensors(
+			$hostid,
+			null,
+			$sort === 'problems',
+			$sort === 'lastclock'
+		);
 
 		$counts = [
 			'total' => count($all_sensors), '0' => 0, '1' => 0, '2' => 0, '3' => 0, 'unsupported' => 0
@@ -158,6 +163,18 @@ class CControllerVMwareSensors extends CController {
 			ZBX_SORT_UP,
 			$url
 		);
+		if ($sensors) {
+			$details = array_column(VMwareCollector::sensors(
+				$hostid,
+				array_column($sensors, 'itemid'),
+				true,
+				true
+			), null, 'itemid');
+			foreach ($sensors as &$sensor) {
+				$sensor = $details[$sensor['itemid']] ?? $sensor;
+			}
+			unset($sensor);
+		}
 
 		$response = new CControllerResponseData([
 			'host' => $this->host,

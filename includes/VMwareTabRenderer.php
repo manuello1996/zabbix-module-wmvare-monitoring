@@ -221,12 +221,10 @@ class VMwareTabRenderer {
 			);
 		}
 
-		return new CDiv([
+		return self::section(_('Unique datastores'), [
 			self::search(_('Filter datastores...'), $data['search'] ?? ''),
-			self::section(_('Unique datastores'), [
-				$unique_table,
-				self::pager($data['unique'])
-			])
+			$unique_table,
+			self::pager($data['unique'])
 		]);
 	}
 

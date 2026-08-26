@@ -17,8 +17,7 @@
 				clearMessages();
 				addMessage(makeMessageBox('good', response.success.messages ?? [], response.success.title));
 			}
-			window.vmware_monitoring.cache.clear();
-			window.vmware_monitoring.loadTab(window.vmware_monitoring.activeTab, true);
+			window.vmware_monitoring.loadTab(window.vmware_monitoring.activeTab);
 		}
 		else {
 			if (response.success !== undefined) {
