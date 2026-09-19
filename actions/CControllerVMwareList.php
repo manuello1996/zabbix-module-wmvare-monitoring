@@ -18,6 +18,7 @@ class CControllerVMwareList extends CController {
 	public const PROFILE_GROUPIDS = 'web.vmware.monitoring.list.filter.groupids';
 	public const PROFILE_HOSTIDS = 'web.vmware.monitoring.list.filter.hostids';
 	private const LOCATION_MACRO = '{$VMWARE.LOCATION}';
+	private const TABS = ['vcenters', 'issues', 'problems'];
 
 	protected function init(): void {
 		$this->disableCsrfValidation();
@@ -29,6 +30,11 @@ class CControllerVMwareList extends CController {
 			'filter_hostids' => 'array_db hosts.hostid',
 			'filter_set' => 'in 1',
 			'filter_rst' => 'in 1',
+			'force_vcenter_refresh' => 'in 1',
+			'tab' => 'in '.implode(',', self::TABS),
+			'search' => 'string',
+			'sort' => 'in vcenter,issue,status,severity,lastupdate',
+			'sortorder' => 'in '.ZBX_SORT_UP.','.ZBX_SORT_DOWN,
 			'page' => 'ge 1'
 		]);
 
@@ -54,6 +60,9 @@ class CControllerVMwareList extends CController {
 
 		$groupids = CProfile::getArray(self::PROFILE_GROUPIDS, []);
 		$filter_hostids = CProfile::getArray(self::PROFILE_HOSTIDS, []);
+		$tab = (string) $this->getInput('tab', 'vcenters');
+		$sort = (string) $this->getInput('sort', 'vcenter');
+		$sortorder = (string) $this->getInput('sortorder', ZBX_SORT_UP);
 		$groups = $groupids
 			? API::HostGroup()->get([
 				'output' => ['groupid', 'name'],
@@ -62,7 +71,10 @@ class CControllerVMwareList extends CController {
 			]) ?: []
 			: [];
 
-		$vcenter_hostids = VMwareCollector::findVCenterHostids($groups ? array_keys($groups) : null);
+		$vcenter_hostids = VMwareCollector::findVCenterHostids(
+			$groups ? array_keys($groups) : null,
+			$this->hasInput('force_vcenter_refresh')
+		);
 		if ($filter_hostids) {
 			$vcenter_hostids = array_values(array_intersect($vcenter_hostids, $filter_hostids));
 		}
@@ -73,15 +85,16 @@ class CControllerVMwareList extends CController {
 
 		$hosts = [];
 		if ($vcenter_hostids) {
-			$hosts = API::Host()->get([
+			$host_options = [
 				'output' => ['hostid', 'name', 'status'],
-				'selectInventory' => ['notes'],
-				'selectMacros' => ['macro', 'value', 'type'],
 				'hostids' => $vcenter_hostids,
 				'preservekeys' => true,
 				'sortfield' => 'name',
-				'limit' => $search_limit
-			]);
+				'limit' => $search_limit,
+				'selectInventory' => ['notes'],
+				'selectMacros' => ['macro', 'value', 'type']
+			];
+			$hosts = API::Host()->get($host_options);
 
 			if ($hosts === false) {
 				$hosts = API::Host()->get([
@@ -115,8 +128,9 @@ class CControllerVMwareList extends CController {
 		}
 		unset($host);
 
-		$vcenters = VMwareCollector::collectVCenterMetrics($hosts);
-
+		$vcenters = array_values(VMwareCollector::collectVCenterMetrics($hosts));
+		$issues = [];
+		$problem_widget = [];
 		$totals = [
 			'vcenters' => count($vcenters), 'hypervisors' => 0, 'vms' => 0,
 			'datastores' => 0, 'datastore_attachments' => 0
@@ -128,7 +142,6 @@ class CControllerVMwareList extends CController {
 			$totals['datastore_attachments'] += $vcenter['datastore_attachments'];
 		}
 
-		$vcenters = array_values($vcenters);
 		usort($vcenters, static function (array $left, array $right): int {
 			$left_path = $left['location_path'] ?? [];
 			$right_path = $right['location_path'] ?? [];
@@ -153,9 +166,58 @@ class CControllerVMwareList extends CController {
 				?: strnatcasecmp($left['name'], $right['name'])
 				?: (string) $left['hostid'] <=> (string) $right['hostid'];
 		});
-		$paging = CPagerHelper::paginate((int) $this->getInput('page', 1), $vcenters, ZBX_SORT_UP,
-			(new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')
-		);
+
+		$paging = null;
+		$issues_paging = null;
+
+		if ($tab === 'issues') {
+			$vcenter_names = array_column($vcenters, 'name', 'hostid');
+			$issues = VMwareCollector::alarmsForVCenters($vcenter_names);
+
+			usort($issues, static function (array $left, array $right) use ($sort, $sortorder): int {
+				$left_value = match ($sort) {
+					'issue' => mb_strtolower($left['name']),
+					'status' => _('Active'),
+					'severity' => $left['severity'] ?? -1,
+					'lastupdate' => (int) $left['lastclock'],
+					default => mb_strtolower($left['vcenter'])
+				};
+				$right_value = match ($sort) {
+					'issue' => mb_strtolower($right['name']),
+					'status' => _('Active'),
+					'severity' => $right['severity'] ?? -1,
+					'lastupdate' => (int) $right['lastclock'],
+					default => mb_strtolower($right['vcenter'])
+				};
+				$result = $left_value <=> $right_value;
+				if ($result === 0) {
+					$result = strnatcasecmp($left['vcenter'], $right['vcenter'])
+						?: strnatcasecmp($left['name'], $right['name'])
+						?: (string) $left['itemid'] <=> (string) $right['itemid'];
+				}
+				return $sortorder === ZBX_SORT_DOWN ? -$result : $result;
+			});
+
+			$issues_paging = CPagerHelper::paginate((int) $this->getInput('page', 1), $issues, ZBX_SORT_UP,
+				(new CUrl('zabbix.php'))
+					->setArgument('action', 'vmware.monitoring.list')
+					->setArgument('tab', 'issues')
+					->setArgument('sort', $sort)
+					->setArgument('sortorder', $sortorder)
+			);
+		}
+		elseif ($tab === 'problems') {
+			$problem_hostids = [];
+			foreach ($vcenters as $vcenter) {
+				$problem_hostids = array_merge($problem_hostids, $vcenter['problem_hostids']);
+			}
+			$problem_widget = VMwareCollector::problemWidgetDataForHosts($problem_hostids);
+		}
+		else {
+			$paging = CPagerHelper::paginate((int) $this->getInput('page', 1), $vcenters, ZBX_SORT_UP,
+				(new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')
+			);
+		}
 
 		$selected_hosts = $filter_hostids
 			? API::Host()->get([
@@ -174,8 +236,14 @@ class CControllerVMwareList extends CController {
 				)
 			],
 			'vcenters' => $vcenters,
+			'issues' => $issues,
+			'problem_widget' => $problem_widget,
 			'totals' => $totals,
 			'paging' => $paging,
+			'issues_paging' => $issues_paging,
+			'tab' => $tab,
+			'sort' => $sort,
+			'sortorder' => $sortorder,
 			'refresh_interval' => timeUnitToSeconds(CWebUser::getRefresh())
 		]);
 		$response->setTitle(_('VMware vCenters'));

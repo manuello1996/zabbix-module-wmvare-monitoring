@@ -3,6 +3,7 @@
 namespace Modules\VMwareMonitoring\Includes;
 
 use API;
+use CProfile;
 use CRoleHelper;
 use CScreenProblem;
 use CSettingsHelper;
@@ -49,6 +50,8 @@ class VMwareCollector {
 
 	public const SPARKLINE_PERIOD = 86400;
 	private const SPARKLINE_POINTS = 60;
+	private const VCENTER_HOSTIDS_CACHE_PROFILE = 'web.vmware.monitoring.vcenter_hostids';
+	private const VCENTER_HOSTIDS_CACHE_TTL = 3600;
 
 	public static function hasRecentValue(array $item): bool {
 		static $minimum_clock = null;
@@ -60,7 +63,18 @@ class VMwareCollector {
 		return (int) ($item['lastclock'] ?? 0) >= $minimum_clock;
 	}
 
-	public static function findVCenterHostids(?array $groupids = null): array {
+	public static function findVCenterHostids(?array $groupids = null, bool $refresh = false): array {
+		$groupids = $groupids === null ? null : array_values(array_unique(array_map('strval', $groupids)));
+		if ($groupids !== null) {
+			sort($groupids, SORT_STRING);
+		}
+		$cache_key = self::VCENTER_HOSTIDS_CACHE_PROFILE.'.'.hash('sha1', json_encode($groupids));
+		$cache_time_key = $cache_key.'.updated';
+		$cached_at = (int) CProfile::get($cache_time_key, 0);
+		if (!$refresh && $cached_at >= time() - self::VCENTER_HOSTIDS_CACHE_TTL) {
+			return CProfile::getArray($cache_key, []);
+		}
+
 		$items = API::Item()->get([
 			'output' => ['hostid'],
 			'groupids' => $groupids,
@@ -69,6 +83,8 @@ class VMwareCollector {
 		]) ?: [];
 
 		if (!$items) {
+			CProfile::updateArray($cache_key, [], PROFILE_TYPE_ID);
+			CProfile::update($cache_time_key, time(), PROFILE_TYPE_INT);
 			return [];
 		}
 
@@ -76,10 +92,15 @@ class VMwareCollector {
 		$accessible_hosts = API::Host()->get([
 			'output' => ['hostid'],
 			'groupids' => $groupids,
+			'hostids' => $item_hostids,
 			'preservekeys' => true
 		]) ?: [];
 
-		return array_values(array_intersect($item_hostids, array_keys($accessible_hosts)));
+		$hostids = array_values(array_intersect($item_hostids, array_keys($accessible_hosts)));
+		CProfile::updateArray($cache_key, $hostids, PROFILE_TYPE_ID);
+		CProfile::update($cache_time_key, time(), PROFILE_TYPE_INT);
+
+		return $hostids;
 	}
 
 	public static function collectVCenterMetrics(array $hosts): array {
@@ -209,6 +230,20 @@ class VMwareCollector {
 			array_keys($topology['hypervisors']),
 			array_keys($topology['vms'])
 		)));
+		return self::problemWidgetDataForHosts($hostids);
+	}
+
+	/**
+	 * Build the native Problems widget data for an already permission-scoped
+	 * group of monitored hosts.
+	 */
+	public static function problemWidgetDataForHosts(array $hostids): array {
+		$hostids = array_values(array_unique(array_map('strval', $hostids)));
+		// CScreenProblem treats an empty host filter as all accessible hosts. A
+		// non-existent ID keeps an empty VMware scope empty instead.
+		if (!$hostids) {
+			$hostids = ['0'];
+		}
 		$search_limit = CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT);
 		$show_lines = ZBX_DEFAULT_WIDGET_LINES;
 		$data = CScreenProblem::getData([
@@ -960,10 +995,25 @@ class VMwareCollector {
 	}
 
 	public static function alarms(string $vcenter_hostid): array {
+		return self::alarmsForVCenters([$vcenter_hostid => '']);
+	}
+
+	/**
+	 * Return the active alarm items used by the vCenter Issues detail tab for a
+	 * set of vCenters. Keeping this in one query makes the overview Issues tab
+	 * practical even when several vCenters are configured.
+	 *
+	 * @param array $vcenters hostid => vCenter name
+	 */
+	public static function alarmsForVCenters(array $vcenters): array {
+		if (!$vcenters) {
+			return [];
+		}
+
 		$items = API::Item()->get([
-			'output' => ['itemid', 'name', 'lastvalue', 'lastclock'],
+			'output' => ['itemid', 'hostid', 'name', 'lastvalue', 'lastclock'],
 			'selectTriggers' => ['triggerid', 'priority'],
-			'hostids' => [$vcenter_hostid],
+			'hostids' => array_keys($vcenters),
 			'search' => ['key_' => 'vmware.alarms.status['],
 			'startSearch' => true,
 			'monitored' => true,
@@ -974,6 +1024,7 @@ class VMwareCollector {
 			static fn(array $item): bool => self::hasRecentValue($item) && (string) $item['lastvalue'] !== '-1'
 		));
 		foreach ($items as &$item) {
+			$item['vcenter'] = (string) ($vcenters[$item['hostid']] ?? '');
 			$item['severity'] = null;
 			foreach ($item['triggers'] ?? [] as $trigger) {
 				$item['severity'] = max((int) ($item['severity'] ?? 0), (int) $trigger['priority']);

@@ -264,7 +264,7 @@
 	gap: 4px;
 	margin: 14px 0 16px;
 	border-bottom: 1px solid var(--vmware-monitoring-card-border);
-	overflow-x: auto;
+	overflow-x: unset;
 }
 
 .vmware-monitoring-tab {
@@ -322,7 +322,8 @@
 	font-size: 12px;
 }
 
-#vmware-monitoring-vcenters-table thead th {
+#vmware-monitoring-vcenters-table thead th,
+#vmware-monitoring-issues-table thead th {
 	font-size: 11px;
 	letter-spacing: .06em;
 	text-transform: uppercase;
@@ -330,7 +331,8 @@
 	background-color: var(--vmware-monitoring-surface-muted);
 }
 
-#vmware-monitoring-vcenters-table tbody td {
+#vmware-monitoring-vcenters-table tbody td,
+#vmware-monitoring-issues-table tbody td {
 	padding-top: 12px;
 	padding-bottom: 12px;
 	vertical-align: middle;
