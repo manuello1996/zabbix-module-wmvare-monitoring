@@ -49,6 +49,7 @@ $page = (new CHtmlPage())
 $page->setControls(
 	(new CForm('get'))
 		->cleanItems()
+		->setId('vmware-monitoring-refresh-vcenters')
 		->addVar('action', 'vmware.monitoring.list')
 		->addVar('tab', $data['tab'])
 		->addVar('sort', $data['sort'])

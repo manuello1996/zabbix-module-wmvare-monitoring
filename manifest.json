@@ -26,6 +26,10 @@
 			"class": "CControllerVMwareSparkline",
 			"layout": "layout.json"
 		},
+		"vmware.monitoring.datastore.attachments": {
+			"class": "CControllerVMwareDatastoreAttachments",
+			"layout": "layout.json"
+		},
 		"vmware.monitoring.sensors": {
 			"class": "CControllerVMwareSensors",
 			"view": "vmware.monitoring.sensors",

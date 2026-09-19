@@ -12,6 +12,16 @@ $page = (new CHtmlPage())
 	->setTitle(_('VMware'))
 	->setWebLayoutMode(CViewHelper::loadLayoutMode());
 
+$page->setControls(
+	(new CForm('get'))
+		->cleanItems()
+		->setId('vmware-monitoring-refresh-vcenter')
+		->addVar('action', 'vmware.monitoring.view')
+		->addVar('tab', $data['initial_tab'])
+		->addVar('page', $data['initial_page'])
+		->addItem(new CSubmitButton(_('Refresh vCenter'), 'force_vcenter_refresh', 1))
+);
+
 $filter_button = new CSubmitButton(_('Filter'), 'filter_set', 1);
 if ($data['host'] === null) {
 	$filter_button->setAttribute('disabled', 'disabled');
@@ -85,11 +95,13 @@ $makeIconButton = static function (string $modifier, string $label): CTag {
 		->setTitle($label);
 };
 
-$makeStat = static function (string $modifier, string $label, $value): CDiv {
+$makeStat = static function (string $id, string $modifier, string $label, $value): CDiv {
 	return (new CDiv([
 		(new CDiv($label))->addClass('vmware-monitoring-statseg-label'),
 		(new CDiv(
-			(new CSpan((string) $value))->addClass('vmware-monitoring-card-value')
+			(new CSpan($value === null ? '-' : (string) $value))
+				->setId('vmware-monitoring-stat-'.$id)
+				->addClass('vmware-monitoring-card-value')
 		))->addClass('vmware-monitoring-statseg-figure')
 	]))
 		->addClass('vmware-monitoring-statseg')
@@ -131,9 +143,9 @@ $page->addItem(
 
 $page->addItem(
 	(new CDiv([
-		$makeStat('nodes', _('Hypervisors'), $data['hypervisors_count']),
-		$makeStat('total', _('Discovered VMs'), $data['vms_count']),
-		$makeStat('total', _('Total VMs'), $data['reported_vms_count'])
+		$makeStat('hypervisors', 'nodes', _('Hypervisors'), $data['hypervisors_count']),
+		$makeStat('discovered-vms', 'total', _('Discovered VMs'), $data['vms_count']),
+		$makeStat('total-vms', 'total', _('Total VMs'), $data['reported_vms_count'])
 	]))->addClass('vmware-monitoring-statstrip')
 );
 

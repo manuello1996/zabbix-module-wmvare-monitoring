@@ -71,10 +71,14 @@ class CControllerVMwareList extends CController {
 			]) ?: []
 			: [];
 
+		$force_refresh = $this->hasInput('force_vcenter_refresh');
 		$vcenter_hostids = VMwareCollector::findVCenterHostids(
 			$groups ? array_keys($groups) : null,
-			$this->hasInput('force_vcenter_refresh')
+			$force_refresh
 		);
+		if ($force_refresh) {
+			VMwareCollector::clearTopologyCaches($vcenter_hostids);
+		}
 		if ($filter_hostids) {
 			$vcenter_hostids = array_values(array_intersect($vcenter_hostids, $filter_hostids));
 		}

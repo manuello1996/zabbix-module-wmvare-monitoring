@@ -8,11 +8,15 @@ window.vmware_monitoring = new class {
 		this.state = new Map();
 		this.searchTimer = null;
 		this.request = null;
+		this.tabCache = new Map();
+		this.sparklineCache = new Map();
+		this.cacheTtl = 10 * 60 * 1000;
 
 		this.bindTabs();
 		this.bindFilters();
 		this.bindPanel();
 		this.bindProblemEvents();
+		this.bindRefresh();
 		Object.assign(this.getState(this.activeTab), {
 			page: Math.max(1, Number(config.page || 1)),
 			search: String(config.search || '').trim(),
@@ -21,6 +25,13 @@ window.vmware_monitoring = new class {
 		});
 		window.addEventListener('popstate', () => this.restoreUrlState());
 		this.activateTab(this.activeTab, 'replace');
+	}
+
+	bindRefresh() {
+		document.getElementById('vmware-monitoring-refresh-vcenter')?.addEventListener('submit', () => {
+			this.tabCache.clear();
+			this.sparklineCache.clear();
+		});
 	}
 
 	bindTabs() {
@@ -122,7 +133,7 @@ window.vmware_monitoring = new class {
 		});
 	}
 
-	toggleDatastore(toggle) {
+	async toggleDatastore(toggle) {
 		const details = document.getElementById(toggle.dataset.vmwareMonitoringDatastoreToggle);
 		if (details === null) {
 			return;
@@ -135,6 +146,36 @@ window.vmware_monitoring = new class {
 			: <?= json_encode(_('Show attachment details')) ?>
 		);
 		details.hidden = !expanded;
+		if (!expanded || details.dataset.vmwareMonitoringDatastoreLoaded === '1'
+				|| details.dataset.vmwareMonitoringDatastoreLoading === '1') {
+			return;
+		}
+
+		const content = document.getElementById(details.dataset.vmwareMonitoringDatastoreContent);
+		const url = details.dataset.vmwareMonitoringDatastoreUrl;
+		if (content === null || !url) {
+			return;
+		}
+		details.dataset.vmwareMonitoringDatastoreLoading = '1';
+		content.textContent = <?= json_encode(_('Loading attachment metrics...')) ?>;
+		try {
+			const response = await fetch(url, {cache: 'no-store'});
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			const payload = await response.json();
+			if ('error' in payload) {
+				throw new Error(payload.error.title || '');
+			}
+			content.innerHTML = payload.html || '';
+			details.dataset.vmwareMonitoringDatastoreLoaded = '1';
+		}
+		catch (error) {
+			content.textContent = <?= json_encode(_('Unable to load attachment metrics.')) ?>;
+		}
+		finally {
+			delete details.dataset.vmwareMonitoringDatastoreLoading;
+		}
 	}
 
 	bindProblemEvents() {
@@ -146,12 +187,12 @@ window.vmware_monitoring = new class {
 			clearMessages();
 			addMessage(makeMessageBox('good', [], response.success.title));
 			if (this.activeTab === 'overview') {
-				this.loadTab('overview');
+				this.loadTab('overview', true);
 			}
 		});
 		$.subscribe('event.rank_change', () => {
 			if (this.activeTab === 'overview') {
-				this.loadTab('overview');
+				this.loadTab('overview', true);
 			}
 		});
 	}
@@ -209,8 +250,20 @@ window.vmware_monitoring = new class {
 		this.activateTab(tab);
 	}
 
-	async loadTab(tab) {
+	cacheKey(tab, state) {
+		return `${tab}:${state.page}:${state.search}:${state.sort}:${state.sortorder}`;
+	}
+
+	async loadTab(tab, force = false) {
 		const state = this.getState(tab);
+		const cacheKey = this.cacheKey(tab, state);
+		const cached = this.tabCache.get(cacheKey);
+		if (!force && cached && cached.createdAt + this.cacheTtl > Date.now()) {
+			this.updateStats(cached.stats);
+			this.render(tab, cached.html);
+			return;
+		}
+		this.tabCache.delete(cacheKey);
 		this.request?.abort();
 		const request = new AbortController();
 		this.request = request;
@@ -238,7 +291,10 @@ window.vmware_monitoring = new class {
 			if ('error' in payload) {
 				throw new Error(payload.error.title || '');
 			}
-			this.render(tab, payload.html || '');
+			const html = payload.html || '';
+			this.tabCache.set(cacheKey, {html, stats: payload.stats, createdAt: Date.now()});
+			this.updateStats(payload.stats);
+			this.render(tab, html);
 		}
 		catch (error) {
 			if (error.name === 'AbortError') {
@@ -269,10 +325,40 @@ window.vmware_monitoring = new class {
 		this.loadSparklines(this.panel);
 	}
 
+	updateStats(stats) {
+		if (!stats) {
+			return;
+		}
+		const values = {
+			'hypervisors': stats.hypervisors,
+			'discovered-vms': stats.discovered_vms,
+			'total-vms': stats.total_vms
+		};
+		Object.entries(values).forEach(([key, value]) => {
+			const element = document.getElementById(`vmware-monitoring-stat-${key}`);
+			if (element !== null) {
+				element.textContent = value == null ? '-' : String(value);
+			}
+		});
+	}
+
 	async loadSparklines(root) {
 		const targets = [...root.querySelectorAll('[data-vmware-monitoring-spark-itemid]')];
-		for (let offset = 0; offset < targets.length; offset += 40) {
-			const batch = targets.slice(offset, offset + 40);
+		const uncached = [];
+		targets.forEach(target => {
+			const itemid = target.dataset.vmwareMonitoringSparkItemid;
+			const cached = this.sparklineCache.get(itemid);
+			if (cached && cached.createdAt + this.cacheTtl > Date.now()) {
+				this.drawSparkline(target, cached.history);
+			}
+			else {
+				this.sparklineCache.delete(itemid);
+				uncached.push(target);
+			}
+		});
+
+		for (let offset = 0; offset < uncached.length; offset += 40) {
+			const batch = uncached.slice(offset, offset + 40);
 			const itemids = [...new Set(batch.map(target => target.dataset.vmwareMonitoringSparkItemid))];
 			const url = new Curl('zabbix.php');
 			url.setArgument('action', 'vmware.monitoring.sparkline');
@@ -282,8 +368,12 @@ window.vmware_monitoring = new class {
 				const response = await fetch(url.getUrl(), {cache: 'no-store'});
 				const payload = await response.json();
 				const histories = payload.history || {};
+				itemids.forEach(itemid => this.sparklineCache.set(itemid, {
+					history: histories[itemid] || [], createdAt: Date.now()
+				}));
 				batch.forEach(target => {
-					this.drawSparkline(target, histories[target.dataset.vmwareMonitoringSparkItemid] || []);
+					this.drawSparkline(target,
+						this.sparklineCache.get(target.dataset.vmwareMonitoringSparkItemid).history);
 				});
 			}
 			catch (error) {

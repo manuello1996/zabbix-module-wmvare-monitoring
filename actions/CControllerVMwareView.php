@@ -25,7 +25,8 @@ class CControllerVMwareView extends CController {
 				'filter_groupids' => 'array_db hstgrp.groupid',
 				'filter_hostid' => 'array_db hosts.hostid',
 				'filter_set' => 'in 1',
-				'filter_rst' => 'in 1',
+			'filter_rst' => 'in 1',
+			'force_vcenter_refresh' => 'in 1',
 				'tab' => 'in overview,hypervisors,vms,datastores,clusters,alarms',
 				'page' => 'ge 1',
 				'search' => 'string',
@@ -64,7 +65,10 @@ class CControllerVMwareView extends CController {
 			]) ?: []
 			: [];
 
-		$vcenter_hostids = VMwareCollector::findVCenterHostids($groups ? array_keys($groups) : null);
+		$force_refresh = $this->hasInput('force_vcenter_refresh');
+		$vcenter_hostids = VMwareCollector::findVCenterHostids(
+			$groups ? array_keys($groups) : null, $force_refresh
+		);
 		// Resolve settings before obtaining the shared API::Host() wrapper.
 		$search_limit = CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT);
 
@@ -130,15 +134,18 @@ class CControllerVMwareView extends CController {
 			'hosts' => array_values($hosts),
 			'host' => $host,
 			'vcenter_metrics' => array_fill_keys(array_values(VMwareCollector::VCENTER_KEYS), null),
-			'hypervisors_count' => 0,
-			'vms_count' => 0,
-			'reported_vms_count' => 0,
-			'datastores_count' => 0,
-			'datastore_attachments_count' => 0
+			'hypervisors_count' => null,
+			'vms_count' => null,
+			'reported_vms_count' => null,
+			'datastores_count' => null,
+			'datastore_attachments_count' => null
 		];
 
 		if ($hostid !== '') {
-			$data = array_replace($data, VMwareCollector::summary($hostid, false, false));
+			if ($force_refresh) {
+				VMwareCollector::clearTopologyCache($hostid);
+			}
+			$data = array_replace($data, VMwareCollector::quickSummary($hostid));
 		}
 
 		$response = new CControllerResponseData($data);

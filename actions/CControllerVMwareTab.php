@@ -62,10 +62,17 @@ class CControllerVMwareTab extends CController {
 			'alarms' => VMwareCollector::alarms($hostid)
 		};
 
+		$payload = ['html' => VMwareTabRenderer::render($tab, $data)];
+		if ($tab === 'overview') {
+			$payload['stats'] = [
+				'hypervisors' => $data['hypervisors_count'],
+				'discovered_vms' => $data['vms_count'],
+				'total_vms' => $data['reported_vms_count']
+			];
+		}
+
 		$this->setResponse(new CControllerResponseData([
-			'main_block' => json_encode([
-				'html' => VMwareTabRenderer::render($tab, $data)
-			])
+			'main_block' => json_encode($payload)
 		]));
 	}
 }

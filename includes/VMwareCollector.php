@@ -51,7 +51,9 @@ class VMwareCollector {
 	public const SPARKLINE_PERIOD = 86400;
 	private const SPARKLINE_POINTS = 60;
 	private const VCENTER_HOSTIDS_CACHE_PROFILE = 'web.vmware.monitoring.vcenter_hostids';
-	private const VCENTER_HOSTIDS_CACHE_TTL = 3600;
+	private const VCENTER_HOSTIDS_CACHE_TTL = 600;
+	private const TOPOLOGY_CACHE_PROFILE = 'web.vmware.monitoring.topology';
+	private const DETAIL_CACHE_TTL = 600;
 
 	public static function hasRecentValue(array $item): bool {
 		static $minimum_clock = null;
@@ -224,6 +226,17 @@ class VMwareCollector {
 		];
 	}
 
+	/**
+	 * Fetch only the vCenter values required to paint the detail-page header.
+	 * The topology and its derived totals are deliberately deferred to Overview.
+	 */
+	public static function quickSummary(string $vcenter_hostid): array {
+		return [
+			'vcenter_metrics' => self::itemsByKeys([$vcenter_hostid], self::VCENTER_KEYS)[$vcenter_hostid]
+				?? array_fill_keys(array_values(self::VCENTER_KEYS), null)
+		];
+	}
+
 	private static function problemWidgetData(string $vcenter_hostid, array $topology): array {
 		$hostids = array_values(array_unique(array_merge(
 			[$vcenter_hostid],
@@ -244,8 +257,11 @@ class VMwareCollector {
 		if (!$hostids) {
 			$hostids = ['0'];
 		}
-		$search_limit = CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT);
 		$show_lines = ZBX_DEFAULT_WIDGET_LINES;
+		// This compact Overview widget only renders this many rows. Asking the
+		// global search limit first can turn one vCenter with many incidents into
+		// a disproportionately expensive page request.
+		$search_limit = $show_lines;
 		$data = CScreenProblem::getData([
 			'show' => TRIGGERS_OPTION_RECENT_PROBLEM,
 			'groupids' => null,
@@ -324,7 +340,51 @@ class VMwareCollector {
 
 	public static function discoveredTopology(string $vcenter_hostid, bool $include_hypervisors = true,
 			bool $include_vms = true): array {
-		return self::discoveredTopologies([$vcenter_hostid], $include_hypervisors, $include_vms)[$vcenter_hostid];
+		$cache_key = self::topologyCacheKey($vcenter_hostid);
+		$cached_at = (int) CProfile::get($cache_key.'.updated', 0);
+		if ($cached_at >= time() - self::DETAIL_CACHE_TTL) {
+			$cached_hypervisors = CProfile::getArray($cache_key.'.hypervisors', []);
+			$cached_vms = CProfile::getArray($cache_key.'.vms', []);
+			$hostids = array_values(array_unique(array_merge($cached_hypervisors, $cached_vms)));
+			$hosts = $hostids ? API::Host()->get([
+				'output' => ['hostid', 'host', 'name', 'status'],
+				'hostids' => $hostids,
+				'preservekeys' => true
+			]) ?: [] : [];
+
+			return [
+				'hypervisors' => $include_hypervisors
+					? array_intersect_key($hosts, array_flip($cached_hypervisors)) : [],
+				'vms' => $include_vms ? array_intersect_key($hosts, array_flip($cached_vms)) : []
+			];
+		}
+
+		$topology = self::discoveredTopologies([$vcenter_hostid], true, true)[$vcenter_hostid];
+		CProfile::updateArray($cache_key.'.hypervisors', array_keys($topology['hypervisors']), PROFILE_TYPE_ID);
+		CProfile::updateArray($cache_key.'.vms', array_keys($topology['vms']), PROFILE_TYPE_ID);
+		CProfile::update($cache_key.'.updated', time(), PROFILE_TYPE_INT);
+
+		return [
+			'hypervisors' => $include_hypervisors ? $topology['hypervisors'] : [],
+			'vms' => $include_vms ? $topology['vms'] : []
+		];
+	}
+
+	private static function topologyCacheKey(string $vcenter_hostid): string {
+		return self::TOPOLOGY_CACHE_PROFILE.'.'.hash('sha1', $vcenter_hostid);
+	}
+
+	public static function clearTopologyCache(string $vcenter_hostid): void {
+		$cache_key = self::topologyCacheKey($vcenter_hostid);
+		CProfile::deleteIdx($cache_key.'.hypervisors');
+		CProfile::deleteIdx($cache_key.'.vms');
+		CProfile::deleteIdx($cache_key.'.updated');
+	}
+
+	public static function clearTopologyCaches(array $vcenter_hostids): void {
+		foreach (array_unique(array_map('strval', $vcenter_hostids)) as $vcenter_hostid) {
+			self::clearTopologyCache($vcenter_hostid);
+		}
 	}
 
 	private static function discoveredTopologies(array $vcenter_hostids, bool $include_hypervisors = true,
@@ -537,21 +597,26 @@ class VMwareCollector {
 
 		if ($search !== '') {
 			$needle = mb_strtolower($search);
-			$placement = self::itemsByKeys(array_keys($vms), [
+			$name_matches = array_filter($vms,
+				static fn(array $vm): bool => str_contains(mb_strtolower($vm['name']), $needle)
+			);
+			// Most searches target a VM name. Do not read placement metrics for
+			// those rows; only the remaining candidates need the wider search.
+			$placement_candidates = array_diff_key($vms, $name_matches);
+			$placement = self::itemsByKeys(array_keys($placement_candidates), [
 				'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster',
 				'vmware.vm.datacenter.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'datacenter',
 				'vmware.vm.hv.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'hypervisor'
 			]);
-			$vms = array_filter($vms, static function (array $vm) use ($needle, $placement): bool {
-				if (str_contains(mb_strtolower($vm['name']), $needle)) {
-					return true;
-				}
+			$placement_matches = array_filter($placement_candidates,
+				static function (array $vm) use ($needle, $placement): bool {
 				$metrics = $placement[$vm['hostid']] ?? [];
 				return str_contains(mb_strtolower(implode(' ', [
 					(string) ($metrics['cluster'] ?? ''), (string) ($metrics['datacenter'] ?? ''),
 					(string) ($metrics['hypervisor'] ?? '')
 				])), $needle);
 			});
+			$vms = $name_matches + $placement_matches;
 		}
 
 		$paged = self::paginateArray($vms, $page, $per_page);
@@ -586,6 +651,10 @@ class VMwareCollector {
 		unset($attachment);
 
 		$unique = self::uniqueDatastores($attachments);
+		foreach ($unique as &$datastore) {
+			$datastore['vcenter_hostid'] = $vcenter_hostid;
+		}
+		unset($datastore);
 		if ($search !== '') {
 			$needle = mb_strtolower($search);
 			$unique = array_filter($unique, static function (array $row) use ($needle): bool {
@@ -598,46 +667,36 @@ class VMwareCollector {
 		$unique_page = self::paginateArray($unique, $page, $per_page);
 		$unique_page['rows'] = array_values($unique_page['rows']);
 
-		$page_identities = array_fill_keys(array_column($unique_page['rows'], 'identity'), true);
-		$detail_hostids = [];
-		foreach ($attachments as $attachment) {
-			if (isset($page_identities[self::datastoreIdentity($attachment)])) {
-				$detail_hostids[(string) $attachment['hostid']] = true;
-			}
-		}
-		$detail_attachments = self::datastores(array_keys($detail_hostids), true);
-		$detail_attachments = array_values(array_filter($detail_attachments,
-			static fn(array $attachment): bool => isset(
-				$page_identities[self::datastoreIdentity($attachment)]
-			)
-		));
-		foreach ($detail_attachments as &$attachment) {
-			$attachment['hypervisor'] = $host_names[$attachment['hostid']] ?? '';
-		}
-		unset($attachment);
-
-		$attachments_by_datastore = [];
-		foreach ($detail_attachments as $attachment) {
-			$attachments_by_datastore[self::datastoreIdentity($attachment)][] = $attachment;
-		}
-		foreach ($attachments_by_datastore as &$datastore_attachments) {
-			usort($datastore_attachments,
-				static fn(array $a, array $b): int => strnatcasecmp($a['hypervisor'], $b['hypervisor'])
-			);
-		}
-		unset($datastore_attachments);
-
-		foreach ($unique_page['rows'] as &$datastore) {
-			$datastore['attachment_rows'] = $attachments_by_datastore[$datastore['identity']] ?? [];
-		}
-		unset($datastore);
-
 		return [
 			'search' => $search,
 			'sort' => $sort,
 			'sortorder' => $sortorder,
 			'unique' => $unique_page
 		];
+	}
+
+	public static function datastoreAttachmentRows(string $vcenter_hostid, string $identity): array {
+		$topology = self::discoveredTopology($vcenter_hostid, true, false);
+		$host_names = array_column($topology['hypervisors'], 'name', 'hostid');
+		$attachments = self::datastores(array_keys($topology['hypervisors']), false);
+		$hostids = [];
+		foreach ($attachments as $attachment) {
+			if (self::datastoreIdentity($attachment) === $identity) {
+				$hostids[(string) $attachment['hostid']] = true;
+			}
+		}
+
+		$details = self::datastores(array_keys($hostids), true);
+		$details = array_values(array_filter($details,
+			static fn(array $attachment): bool => self::datastoreIdentity($attachment) === $identity
+		));
+		foreach ($details as &$attachment) {
+			$attachment['hypervisor'] = $host_names[$attachment['hostid']] ?? '';
+		}
+		unset($attachment);
+		usort($details, static fn(array $a, array $b): int => strnatcasecmp($a['hypervisor'], $b['hypervisor']));
+
+		return $details;
 	}
 
 	public static function clusters(string $vcenter_hostid): array {

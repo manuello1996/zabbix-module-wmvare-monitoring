@@ -17,6 +17,7 @@ window.vmware_monitoring_list = new class {
 			this.content.addEventListener('contextmenu', event => this.openHostMenu(event));
 		}
 		this.bindTabs();
+		this.bindRefresh();
 		if (this.refresh > 0) {
 			PageRefresh.init(this.refresh * 1000);
 		}
@@ -27,6 +28,13 @@ window.vmware_monitoring_list = new class {
 		}
 
 		this.preloadRemainingTabs();
+	}
+
+	bindRefresh() {
+		document.getElementById('vmware-monitoring-refresh-vcenters')?.addEventListener('submit', () => {
+			this.tabContent.clear();
+			this.tabRequests.clear();
+		});
 	}
 
 	bindTabs() {

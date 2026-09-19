@@ -175,23 +175,12 @@ class VMwareTabRenderer {
 			->setNoDataMessage(_('No datastores discovered yet.'));
 		foreach ($data['unique']['rows'] as $row) {
 			$details_id = 'vmware-monitoring-datastore-'.substr(hash('sha256', $row['identity']), 0, 16);
-			$attachment_table = (new CTableInfo())
-				->setHeader([
-					_('Hypervisor'), _('Type'), _('Capacity'), _('Free'),
-					_('Read / write latency'), _('Read / write IOPS'), _('Multipaths')
-				])
-				->setNoDataMessage(_('No datastore attachments found.'));
-			foreach ($row['attachment_rows'] as $attachment) {
-				$attachment_table->addRow([
-					$attachment['hypervisor'] ?: '-',
-					$attachment['type'] ?: '-',
-					VMwareFormatter::bytes($attachment['total']),
-					VMwareFormatter::percent($attachment['free_pct']),
-					($attachment['read_latency'] ?? '-').' / '.($attachment['write_latency'] ?? '-').' ms',
-					($attachment['read_iops'] ?? '-').' / '.($attachment['write_iops'] ?? '-'),
-					$attachment['multipath'] ?? '-'
-				]);
-			}
+			$details_content_id = $details_id.'-content';
+			$details_url = (new CUrl('zabbix.php'))
+				->setArgument('action', 'vmware.monitoring.datastore.attachments')
+				->setArgument('hostid', $row['vcenter_hostid'])
+				->setArgument('identity', $row['identity'])
+				->getUrl();
 
 			$unique_table->addRow(
 				(new CRow([
@@ -213,10 +202,16 @@ class VMwareTabRenderer {
 			);
 			$unique_table->addRow(
 				(new CRow([
-					(new CCol($attachment_table))->setColSpan(7)
+					(new CCol(
+						(new CDiv(_('Expand to load attachment metrics.')))
+							->setId($details_content_id)
+							->addClass('vmware-monitoring-muted')
+					))->setColSpan(7)
 				]))
 					->setId($details_id)
 					->setAttribute('hidden', 'hidden')
+					->setAttribute('data-vmware-monitoring-datastore-url', $details_url)
+					->setAttribute('data-vmware-monitoring-datastore-content', $details_content_id)
 					->addClass('vmware-monitoring-datastore-details')
 			);
 		}
@@ -226,6 +221,28 @@ class VMwareTabRenderer {
 			$unique_table,
 			self::pager($data['unique'])
 		]);
+	}
+
+	public static function renderDatastoreAttachments(array $attachments): string {
+		$table = (new CTableInfo())
+			->setHeader([
+				_('Hypervisor'), _('Type'), _('Capacity'), _('Free'),
+				_('Read / write latency'), _('Read / write IOPS'), _('Multipaths')
+			])
+			->setNoDataMessage(_('No datastore attachments found.'));
+		foreach ($attachments as $attachment) {
+			$table->addRow([
+				$attachment['hypervisor'] ?: '-',
+				$attachment['type'] ?: '-',
+				VMwareFormatter::bytes($attachment['total']),
+				VMwareFormatter::percent($attachment['free_pct']),
+				($attachment['read_latency'] ?? '-').' / '.($attachment['write_latency'] ?? '-').' ms',
+				($attachment['read_iops'] ?? '-').' / '.($attachment['write_iops'] ?? '-'),
+				$attachment['multipath'] ?? '-'
+			]);
+		}
+
+		return (string) $table;
 	}
 
 	private static function clusters(array $rows): CDiv {
