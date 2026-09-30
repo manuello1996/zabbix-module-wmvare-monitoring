@@ -30,7 +30,7 @@
 			"class": "CControllerVMwareDatastoreAttachments",
 			"layout": "layout.json"
 		},
-		"vmware.monitoring.sensors": {
+		"vmware.monitoring.hypervisor": {
 			"class": "CControllerVMwareSensors",
 			"view": "vmware.monitoring.sensors",
 			"layout": "layout.htmlpage"

@@ -144,6 +144,7 @@ class CControllerVMwareView extends CController {
 		if ($hostid !== '') {
 			if ($force_refresh) {
 				VMwareCollector::clearTopologyCache($hostid);
+				VMwareCollector::clearSessionDataCache();
 			}
 			$data = array_replace($data, VMwareCollector::quickSummary($hostid));
 		}

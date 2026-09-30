@@ -316,12 +316,17 @@ class VMwareTabRenderer {
 
 		if ($show_sensors) {
 			$sensors_url = (new CUrl('zabbix.php'))
-				->setArgument('action', 'vmware.monitoring.sensors')
+				->setArgument('action', 'vmware.monitoring.hypervisor')
 				->setArgument('hostid', $hostid)
+				->setArgument('tab', 'sensors')
 				->getUrl();
 			$link->setAttribute('data-vmware-monitoring-sensors-url', $sensors_url);
 			if ($open_detail_on_click) {
-				$link->setAttribute('data-vmware-monitoring-host-detail-url', $sensors_url);
+				$detail_url = (new CUrl('zabbix.php'))
+					->setArgument('action', 'vmware.monitoring.hypervisor')
+					->setArgument('hostid', $hostid)
+					->getUrl();
+				$link->setAttribute('data-vmware-monitoring-host-detail-url', $detail_url);
 			}
 		}
 

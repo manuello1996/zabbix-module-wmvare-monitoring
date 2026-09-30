@@ -23,6 +23,7 @@ class CControllerVMwareSensors extends CController {
 	protected function checkInput(): bool {
 		$ret = $this->validateInput([
 			'hostid' => 'required|db hosts.hostid',
+			'tab' => 'in overview,datastores,vms,problems,sensors',
 			'filter_name' => 'string',
 			'filter_status' => 'in all,non_green,unsupported,0,1,2,3',
 			'filter_types' => 'array',
@@ -44,15 +45,20 @@ class CControllerVMwareSensors extends CController {
 		}
 
 		$hosts = API::Host()->get([
-			'output' => ['hostid', 'name'],
+			'output' => ['hostid'],
 			'hostids' => [$this->getInput('hostid')]
 		]) ?: [];
 		if (!$hosts) {
 			return false;
 		}
 
-		$this->host = reset($hosts);
-		$vcenter = VMwareCollector::vcenterForDiscoveredHost((string) $this->host['hostid']);
+		$hostid = (string) reset($hosts)['hostid'];
+		$host = VMwareCollector::hypervisorInventory($hostid);
+		if ($host === null) {
+			return false;
+		}
+		$this->host = $host;
+		$vcenter = VMwareCollector::cachedVCenterForDiscoveredHost($hostid);
 		if ($vcenter === null) {
 			return false;
 		}
@@ -62,16 +68,28 @@ class CControllerVMwareSensors extends CController {
 
 	protected function doAction(): void {
 		$hostid = (string) $this->host['hostid'];
+		$tab = (string) $this->getInput('tab', 'overview');
 		$search = trim((string) $this->getInput('filter_name', ''));
 		$status_filter = (string) $this->getInput('filter_status', 'all');
 		$sort = (string) $this->getInput('sort', 'name');
 		$sortorder = (string) $this->getInput('sortorder', ZBX_SORT_UP);
-		$all_sensors = VMwareCollector::sensors(
-			$hostid,
-			null,
-			$sort === 'problems',
-			$sort === 'lastclock'
-		);
+		$detail = in_array($tab, ['overview', 'datastores'], true)
+			? VMwareCollector::hypervisorDetail($hostid) : [];
+		$virtual_machines = $tab === 'vms'
+			? VMwareCollector::virtualMachinesPage(
+				(string) $this->vcenter['hostid'],
+				(int) $this->getInput('page', 1),
+				max(1, (int) (CWebUser::$data['rows_per_page'] ?? 25)),
+				'',
+				(string) $this->host['name']
+			)
+			: [];
+		$problem_widget = $tab === 'problems'
+			? VMwareCollector::cachedProblemWidgetDataForHosts([$hostid])
+			: [];
+		$all_sensors = $tab === 'sensors'
+			? VMwareCollector::sensors($hostid, null, $sort === 'problems', $sort === 'lastclock')
+			: [];
 
 		$counts = [
 			'total' => count($all_sensors), '0' => 0, '1' => 0, '2' => 0, '3' => 0, 'unsupported' => 0
@@ -149,8 +167,9 @@ class CControllerVMwareSensors extends CController {
 		});
 
 		$url = (new CUrl('zabbix.php'))
-			->setArgument('action', 'vmware.monitoring.sensors')
+			->setArgument('action', 'vmware.monitoring.hypervisor')
 			->setArgument('hostid', $hostid)
+			->setArgument('tab', 'sensors')
 			->setArgument('filter_name', $search !== '' ? $search : null)
 			->setArgument('filter_status', $status_filter !== 'all' ? $status_filter : null)
 			->setArgument('filter_types', $selected_types)
@@ -179,6 +198,10 @@ class CControllerVMwareSensors extends CController {
 		$response = new CControllerResponseData([
 			'host' => $this->host,
 			'vcenter' => $this->vcenter,
+			'tab' => $tab,
+			'detail' => $detail,
+			'virtual_machines' => $virtual_machines,
+			'problem_widget' => $problem_widget,
 			'sensors' => $sensors,
 			'counts' => $counts,
 			'type_counts' => $type_counts,
@@ -187,7 +210,7 @@ class CControllerVMwareSensors extends CController {
 			'sortorder' => $sortorder,
 			'paging' => $paging
 		]);
-		$response->setTitle(_('VMware sensors'));
+		$response->setTitle(_('VMware hypervisor'));
 		$this->setResponse($response);
 	}
 }

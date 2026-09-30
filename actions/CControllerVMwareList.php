@@ -78,6 +78,7 @@ class CControllerVMwareList extends CController {
 		);
 		if ($force_refresh) {
 			VMwareCollector::clearTopologyCaches($vcenter_hostids);
+			VMwareCollector::clearSessionDataCache();
 		}
 		if ($filter_hostids) {
 			$vcenter_hostids = array_values(array_intersect($vcenter_hostids, $filter_hostids));

@@ -7,6 +7,7 @@ use CProfile;
 use CRoleHelper;
 use CScreenProblem;
 use CSettingsHelper;
+use CSessionHelper;
 use CWebUser;
 use DB;
 use Manager;
@@ -54,6 +55,9 @@ class VMwareCollector {
 	private const VCENTER_HOSTIDS_CACHE_TTL = 600;
 	private const TOPOLOGY_CACHE_PROFILE = 'web.vmware.monitoring.topology';
 	private const DETAIL_CACHE_TTL = 600;
+	private const PERFORMANCE_CACHE_TTL = 300;
+	private const OPERATIONAL_CACHE_TTL = 60;
+	private const SESSION_CACHE_KEY = 'vmware_monitoring_data_cache';
 
 	public static function hasRecentValue(array $item): bool {
 		static $minimum_clock = null;
@@ -338,6 +342,16 @@ class VMwareCollector {
 		];
 	}
 
+	public static function cachedProblemWidgetDataForHosts(array $hostids): array {
+		$hostids = array_values(array_unique(array_map('strval', $hostids)));
+		sort($hostids, SORT_STRING);
+		return self::cachedData(
+			'problems.widget.'.hash('sha1', json_encode($hostids)),
+			self::OPERATIONAL_CACHE_TTL,
+			static fn(): array => self::problemWidgetDataForHosts($hostids)
+		);
+	}
+
 	public static function discoveredTopology(string $vcenter_hostid, bool $include_hypervisors = true,
 			bool $include_vms = true): array {
 		$cache_key = self::topologyCacheKey($vcenter_hostid);
@@ -510,6 +524,30 @@ class VMwareCollector {
 		return $hosts ? reset($hosts) : null;
 	}
 
+	public static function cachedVCenterForDiscoveredHost(string $hostid): ?array {
+		return self::cachedData('hypervisor.vcenter.'.$hostid, self::DETAIL_CACHE_TTL,
+			static fn(): ?array => self::vcenterForDiscoveredHost($hostid)
+		);
+	}
+
+	public static function hypervisorInventory(string $hostid): ?array {
+		return self::cachedData('hypervisor.inventory.'.$hostid, self::DETAIL_CACHE_TTL,
+			static function () use ($hostid): ?array {
+				$hosts = API::Host()->get([
+					'output' => ['hostid', 'name', 'status'],
+					'selectInventory' => ['notes'],
+					'hostids' => [$hostid]
+				]) ?: [];
+				if (!$hosts) {
+					return null;
+				}
+				$host = reset($hosts);
+				$host += ['inventory' => []];
+				return $host;
+			}
+		);
+	}
+
 	public static function hypervisorsPage(string $vcenter_hostid, int $page, int $per_page,
 			string $search = '', string $sort = 'name', string $sortorder = ZBX_SORT_UP): array {
 		$topology = self::discoveredTopology($vcenter_hostid, true, false);
@@ -590,44 +628,61 @@ class VMwareCollector {
 	}
 
 	public static function virtualMachinesPage(string $vcenter_hostid, int $page, int $per_page,
-			string $search = ''): array {
+			string $search = '', ?string $hypervisor_name = null): array {
 		$topology = self::discoveredTopology($vcenter_hostid, false, true);
 		$vms = $topology['vms'];
 		uasort($vms, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
 
-		if ($search !== '') {
+		if ($search !== '' || $hypervisor_name !== null) {
 			$needle = mb_strtolower($search);
-			$name_matches = array_filter($vms,
-				static fn(array $vm): bool => str_contains(mb_strtolower($vm['name']), $needle)
-			);
-			// Most searches target a VM name. Do not read placement metrics for
-			// those rows; only the remaining candidates need the wider search.
-			$placement_candidates = array_diff_key($vms, $name_matches);
-			$placement = self::itemsByKeys(array_keys($placement_candidates), [
+			$placement_key_map = [
 				'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster',
 				'vmware.vm.datacenter.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'datacenter',
 				'vmware.vm.hv.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'hypervisor'
-			]);
-			$placement_matches = array_filter($placement_candidates,
+			];
+			$placement = self::cachedData('vcenter.vm.placement.'.$vcenter_hostid,
+				self::PERFORMANCE_CACHE_TTL,
+				static fn(): array => self::itemsByKeys(array_keys($vms), $placement_key_map)
+			);
+			if ($hypervisor_name !== null) {
+				$vms = array_filter($vms, static fn(array $vm): bool =>
+					(string) ($placement[$vm['hostid']]['hypervisor'] ?? '') === $hypervisor_name
+				);
+			}
+			else {
+				$name_matches = array_filter($vms,
+					static fn(array $vm): bool => str_contains(mb_strtolower($vm['name']), $needle)
+				);
+				$placement_candidates = array_diff_key($vms, $name_matches);
+				$placement_matches = array_filter($placement_candidates,
 				static function (array $vm) use ($needle, $placement): bool {
 				$metrics = $placement[$vm['hostid']] ?? [];
 				return str_contains(mb_strtolower(implode(' ', [
 					(string) ($metrics['cluster'] ?? ''), (string) ($metrics['datacenter'] ?? ''),
 					(string) ($metrics['hypervisor'] ?? '')
 				])), $needle);
-			});
-			$vms = $name_matches + $placement_matches;
+				});
+				$vms = $name_matches + $placement_matches;
+			}
 		}
 
 		$paged = self::paginateArray($vms, $page, $per_page);
-		$metrics = self::itemsByKeys(array_keys($paged['rows']), self::VM_KEYS);
-		$problems = self::problemsByHosts(array_keys($paged['rows']));
-		$inventory = API::Host()->get([
-			'output' => ['hostid'],
-			'selectInventory' => ['notes'],
-			'hostids' => array_keys($paged['rows']),
-			'preservekeys' => true
-		]) ?: [];
+		$page_hostids = array_keys($paged['rows']);
+		$page_cache_key = hash('sha1', json_encode($page_hostids));
+		$metrics = self::cachedData('vm.metrics.'.$page_cache_key, self::PERFORMANCE_CACHE_TTL,
+			static fn(): array => self::itemsByKeys($page_hostids, self::VM_KEYS)
+		);
+		$problems = self::cachedData('vm.problems.'.$page_cache_key, self::OPERATIONAL_CACHE_TTL,
+			static fn(): array => self::problemsByHosts($page_hostids)
+		);
+		$inventory = self::cachedData('vm.inventory.'.$page_cache_key, self::DETAIL_CACHE_TTL,
+			static fn(): array => API::Host()->get([
+				'output' => ['hostid'],
+				'selectInventory' => ['notes'],
+				'hostids' => $page_hostids,
+				'preservekeys' => true
+			]) ?: []
+		);
 
 		foreach ($paged['rows'] as $hostid => &$host) {
 			$host['metrics'] = $metrics[$hostid] ?? array_fill_keys(array_values(self::VM_KEYS), null);
@@ -1053,6 +1108,104 @@ class VMwareCollector {
 		];
 	}
 
+	public static function hypervisorDetail(string $hostid): array {
+		$operational_keys = [
+			'vmware.hv.connectionstate[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'connection',
+			'vmware.hv.status[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'health'
+		];
+		$key_map = [
+			'vmware.hv.cluster.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cluster',
+			'vmware.hv.datacenter.name[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'datacenter',
+			'vmware.hv.cpu.usage.perf[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_pct',
+			'vmware.hv.cpu.usage[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_used',
+			'vmware.hv.hw.cpu.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_cores',
+			'vmware.hv.hw.cpu.threads[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_threads',
+			'vmware.hv.hw.cpu.freq[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_frequency',
+			'vmware.hv.hw.cpu.model[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'cpu_model',
+			'vmware.hv.hw.vendor[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vendor',
+			'vmware.hv.hw.model[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'model',
+			'vmware.hv.memory.used[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_used',
+			'vmware.hv.hw.memory[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_total',
+			'vmware.hv.memory.size.ballooned[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'memory_ballooned',
+			'vmware.hv.network.in[{$VMWARE.URL},{$VMWARE.HV.UUID},bps]' => 'network_in',
+			'vmware.hv.network.out[{$VMWARE.URL},{$VMWARE.HV.UUID},bps]' => 'network_out',
+			'vmware.hv.network.in[{$VMWARE.URL},{$VMWARE.HV.UUID},dropped]' => 'network_dropped_in',
+			'vmware.hv.network.out[{$VMWARE.URL},{$VMWARE.HV.UUID},dropped]' => 'network_dropped_out',
+			'vmware.hv.network.in[{$VMWARE.URL},{$VMWARE.HV.UUID},errors]' => 'network_errors_in',
+			'vmware.hv.network.out[{$VMWARE.URL},{$VMWARE.HV.UUID},errors]' => 'network_errors_out',
+			'vmware.hv.power[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'power',
+			'vmware.hv.power[{$VMWARE.URL},{$VMWARE.HV.UUID},max]' => 'power_max',
+			'vmware.hv.vm.num[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'vm_count',
+			'vmware.hv.uptime[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'uptime',
+			'vmware.hv.version[{$VMWARE.URL},{$VMWARE.HV.UUID}]' => 'version'
+		];
+		$metrics = self::cachedData('hypervisor.metrics.'.$hostid, self::PERFORMANCE_CACHE_TTL,
+			static fn(): array => self::itemsByKeys([$hostid], $key_map)[$hostid]
+				?? array_fill_keys(array_values($key_map), null)
+		);
+		$metrics += self::cachedData('hypervisor.operational.'.$hostid, self::OPERATIONAL_CACHE_TTL,
+			static fn(): array => self::itemsByKeys([$hostid], $operational_keys)[$hostid]
+				?? array_fill_keys(array_values($operational_keys), null)
+		);
+		$metrics['cpu_capacity'] = $metrics['cpu_cores'] !== null && $metrics['cpu_frequency'] !== null
+			? (float) $metrics['cpu_cores'] * (float) $metrics['cpu_frequency']
+			: null;
+		$metrics['memory_pct'] = (float) ($metrics['memory_total'] ?? 0) > 0
+			? (float) $metrics['memory_used'] / (float) $metrics['memory_total'] * 100
+			: null;
+
+		$problems = self::cachedData('hypervisor.problems.'.$hostid, self::OPERATIONAL_CACHE_TTL,
+			static fn(): array => self::problemsByHosts([$hostid])[$hostid] ?? []
+		);
+		$attachments = self::cachedData('hypervisor.datastores.'.$hostid, self::PERFORMANCE_CACHE_TTL,
+			static fn(): array => self::datastores([$hostid], true)
+		);
+		$datastore_totals = [
+			'count' => count($attachments), 'capacity' => 0.0, 'free' => 0.0, 'lowest_free_pct' => null
+		];
+		foreach ($attachments as $attachment) {
+			if ($attachment['total'] !== null) {
+				$datastore_totals['capacity'] += (float) $attachment['total'];
+				if ($attachment['free_pct'] !== null) {
+					$datastore_totals['free'] += (float) $attachment['total']
+						* (float) $attachment['free_pct'] / 100;
+				}
+			}
+			if ($attachment['free_pct'] !== null) {
+				$datastore_totals['lowest_free_pct'] = $datastore_totals['lowest_free_pct'] === null
+					? (float) $attachment['free_pct']
+					: min($datastore_totals['lowest_free_pct'], (float) $attachment['free_pct']);
+			}
+		}
+
+		return [
+			'metrics' => $metrics,
+			'problems' => $problems,
+			'problem_count' => array_sum($problems),
+			'datastores' => $attachments,
+			'datastore_totals' => $datastore_totals
+		];
+	}
+
+	private static function cachedData(string $key, int $ttl, callable $loader) {
+		$cache = CSessionHelper::get(self::SESSION_CACHE_KEY);
+		$cache = is_array($cache) ? $cache : [];
+		$entry = $cache[$key] ?? null;
+		if (is_array($entry) && (int) ($entry['created_at'] ?? 0) >= time() - $ttl
+				&& array_key_exists('data', $entry)) {
+			return $entry['data'];
+		}
+
+		$data = $loader();
+		$cache[$key] = ['created_at' => time(), 'data' => $data];
+		CSessionHelper::set(self::SESSION_CACHE_KEY, $cache);
+		return $data;
+	}
+
+	public static function clearSessionDataCache(): void {
+		CSessionHelper::unset([self::SESSION_CACHE_KEY]);
+	}
+
 	public static function alarms(string $vcenter_hostid): array {
 		return self::alarmsForVCenters([$vcenter_hostid => '']);
 	}
@@ -1065,6 +1218,15 @@ class VMwareCollector {
 	 * @param array $vcenters hostid => vCenter name
 	 */
 	public static function alarmsForVCenters(array $vcenters): array {
+		ksort($vcenters, SORT_STRING);
+		return self::cachedData(
+			'vcenter.alarms.'.hash('sha1', json_encode($vcenters)),
+			self::OPERATIONAL_CACHE_TTL,
+			static fn(): array => self::alarmsForVCentersUncached($vcenters)
+		);
+	}
+
+	private static function alarmsForVCentersUncached(array $vcenters): array {
 		if (!$vcenters) {
 			return [];
 		}
