@@ -143,13 +143,23 @@ foreach ([['vcenters', _('vCenters')], ['issues', _('Issues')], ['problems', _('
 $page->addItem((new CDiv($tabs))->addClass('vmware-monitoring-tabs')->setAttribute('role', 'tablist'));
 
 if ($data['tab'] === 'problems') {
+	$problem_content = [
+		(new CDiv(new WidgetProblems($data['problem_widget'])))
+			->addClass('dashboard-widget-problems')
+	];
+	if ($data['problem_widget']['has_more'] ?? false) {
+		$problem_content[] = (new CDiv(
+			new CLink(
+				_('View all problems'),
+				(new CUrl('zabbix.php'))
+					->setArgument('action', 'problem.view')
+			)
+		))->addClass('vmware-monitoring-pager');
+	}
 	$page
 		->addItem(
 			(new CDiv(
-				(new CDiv([
-				(new CDiv(new WidgetProblems($data['problem_widget'])))
-					->addClass('dashboard-widget-problems')
-				]))->addClass('vmware-monitoring-section')
+				(new CDiv($problem_content))->addClass('vmware-monitoring-section')
 			))->setId('vmware-monitoring-tab-content')
 		)
 		->show();
@@ -203,21 +213,28 @@ if ($data['tab'] === 'issues') {
 			->setArgument('filter_set', 1);
 		$vcenter_url->setArgument('tab', 'alarms');
 		$table->addRow([
-			(new CLink($row['vcenter'], $vcenter_url))->addClass('vmware-monitoring-name'),
-			(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
-			(new CSpan(_('Active')))->addClass('vmware-monitoring-state-stopped'),
+			(new CLink($row['vcenter'], $vcenter_url))->addClass('vmware-monitoring-issue-link'),
+			(new CSpan($row['name']))->addClass('vmware-monitoring-issue-text'),
+			(new CSpan(_('Active')))->addClass('vmware-monitoring-issue-status'),
 			$severity,
 			(int) $row['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, (int) $row['lastclock']) : '-'
 		]);
 	}
 
+	$issue_content = [$table, $data['issues_paging']];
+	if ($data['issues_has_more']) {
+		$issue_content[] = (new CDiv(
+			new CLink(
+				_('View all problems'),
+				(new CUrl('zabbix.php'))->setArgument('action', 'problem.view')
+			)
+		))->addClass('vmware-monitoring-pager');
+	}
+
 	$page
 		->addItem(
 			(new CDiv([
-				(new CDiv([
-					$table,
-					$data['issues_paging']
-				]))->addClass('vmware-monitoring-section')
+				(new CDiv($issue_content))->addClass('vmware-monitoring-section')
 			]))->setId('vmware-monitoring-tab-content')
 		)
 		->show();

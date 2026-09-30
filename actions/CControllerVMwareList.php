@@ -174,6 +174,7 @@ class CControllerVMwareList extends CController {
 
 		$paging = null;
 		$issues_paging = null;
+		$issues_has_more = false;
 
 		if ($tab === 'issues') {
 			$vcenter_names = array_column($vcenters, 'name', 'hostid');
@@ -202,6 +203,8 @@ class CControllerVMwareList extends CController {
 				}
 				return $sortorder === ZBX_SORT_DOWN ? -$result : $result;
 			});
+			$issues_has_more = count($issues)
+				> max(1, (int) (CWebUser::$data['rows_per_page'] ?? ZBX_DEFAULT_WIDGET_LINES));
 
 			$issues_paging = CPagerHelper::paginate((int) $this->getInput('page', 1), $issues, ZBX_SORT_UP,
 				(new CUrl('zabbix.php'))
@@ -216,7 +219,11 @@ class CControllerVMwareList extends CController {
 			foreach ($vcenters as $vcenter) {
 				$problem_hostids = array_merge($problem_hostids, $vcenter['problem_hostids']);
 			}
-			$problem_widget = VMwareCollector::problemWidgetDataForHosts($problem_hostids);
+			$problem_hostids = array_values(array_unique(array_map('strval', $problem_hostids)));
+			$problem_widget = VMwareCollector::problemWidgetDataForHosts(
+				$problem_hostids,
+				max(1, (int) (CWebUser::$data['rows_per_page'] ?? ZBX_DEFAULT_WIDGET_LINES))
+			);
 		}
 		else {
 			$paging = CPagerHelper::paginate((int) $this->getInput('page', 1), $vcenters, ZBX_SORT_UP,
@@ -246,6 +253,7 @@ class CControllerVMwareList extends CController {
 			'totals' => $totals,
 			'paging' => $paging,
 			'issues_paging' => $issues_paging,
+			'issues_has_more' => $issues_has_more,
 			'tab' => $tab,
 			'sort' => $sort,
 			'sortorder' => $sortorder,

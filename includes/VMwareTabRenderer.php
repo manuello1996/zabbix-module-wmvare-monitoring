@@ -286,8 +286,8 @@ class VMwareTabRenderer {
 				: (new CSpan(CSeverityHelper::getName((int) $row['severity'])))
 					->addClass(CSeverityHelper::getStatusStyle((int) $row['severity']));
 			$table->addRow([
-				(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
-				(new CSpan(_('Active')))->addClass('vmware-monitoring-state-stopped'),
+				(new CSpan($row['name']))->addClass('vmware-monitoring-issue-text'),
+				(new CSpan(_('Active')))->addClass('vmware-monitoring-issue-status'),
 				$severity,
 				self::clock($row['lastclock'])
 			]);

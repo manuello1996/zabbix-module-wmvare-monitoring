@@ -386,6 +386,26 @@
 	color: var(--vmware-monitoring-accent);
 }
 
+.vmware-monitoring-issue-link,
+.vmware-monitoring-issue-text,
+.vmware-monitoring-issue-status {
+	font-size: 12.5px;
+	font-weight: normal;
+}
+
+.vmware-monitoring-issue-link,
+.vmware-monitoring-issue-text {
+	color: var(--vmware-monitoring-text);
+}
+
+.vmware-monitoring-issue-link:hover {
+	color: var(--vmware-monitoring-accent);
+}
+
+.vmware-monitoring-issue-status {
+	color: var(--vmware-monitoring-stopped);
+}
+
 .vmware-monitoring-state {
 	font-size: 12.5px;
 	color: var(--vmware-monitoring-text-muted);

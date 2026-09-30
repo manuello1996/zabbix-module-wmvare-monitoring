@@ -254,14 +254,14 @@ class VMwareCollector {
 	 * Build the native Problems widget data for an already permission-scoped
 	 * group of monitored hosts.
 	 */
-	public static function problemWidgetDataForHosts(array $hostids): array {
+	public static function problemWidgetDataForHosts(array $hostids, ?int $show_lines = null): array {
 		$hostids = array_values(array_unique(array_map('strval', $hostids)));
 		// CScreenProblem treats an empty host filter as all accessible hosts. A
 		// non-existent ID keeps an empty VMware scope empty instead.
 		if (!$hostids) {
 			$hostids = ['0'];
 		}
-		$show_lines = ZBX_DEFAULT_WIDGET_LINES;
+		$show_lines = max(1, $show_lines ?? ZBX_DEFAULT_WIDGET_LINES);
 		// This compact Overview widget only renders this many rows. Asking the
 		// global search limit first can turn one vCenter with many incidents into
 		// a disproportionately expensive page request.
@@ -312,6 +312,7 @@ class VMwareCollector {
 		}
 
 		return $data + [
+			'has_more' => $problem_count > $show_lines,
 			'fields' => [
 				'show' => TRIGGERS_OPTION_RECENT_PROBLEM,
 				'show_tags' => SHOW_TAGS_NONE,
