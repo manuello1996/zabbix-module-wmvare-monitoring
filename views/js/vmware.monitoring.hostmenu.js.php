@@ -2,6 +2,7 @@
 <script>
 (() => {
 	const selector = '[data-vmware-monitoring-sensors-url]';
+	const hostDetailSelector = '[data-vmware-monitoring-host-detail-url]';
 	const menuSelector = '.menu-popup.menu-popup-top';
 	const sensorsLabel = <?= json_encode(_('Sensors')) ?>;
 	const viewLabel = <?= json_encode(_('View')) ?>;
@@ -139,5 +140,49 @@
 
 	document.addEventListener('click', prepareSensorsEntry, true);
 	document.addEventListener('keydown', prepareSensorsEntry, true);
+
+	// Hypervisor names in the vCenter detail table have two deliberate actions:
+	// ordinary activation opens the VMware detail page, while the context menu
+	// stays the standard Zabbix host menu.
+	document.addEventListener('click', event => {
+		const opener = event.target.closest(hostDetailSelector);
+		if (opener === null || opener.dataset.vmwareMonitoringContextMenu === '1'
+				|| event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		window.location.assign(opener.dataset.vmwareMonitoringHostDetailUrl);
+	}, true);
+
+	document.addEventListener('keydown', event => {
+		const opener = event.target.closest(hostDetailSelector);
+		if (opener === null || event.key !== 'Enter') {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		window.location.assign(opener.dataset.vmwareMonitoringHostDetailUrl);
+	}, true);
+
+	document.addEventListener('contextmenu', event => {
+		const opener = event.target.closest(hostDetailSelector);
+		if (opener === null) {
+			return;
+		}
+
+		event.preventDefault();
+		opener.dataset.vmwareMonitoringContextMenu = '1';
+		opener.dispatchEvent(new MouseEvent('click', {
+			bubbles: true,
+			cancelable: true,
+			view: window,
+			clientX: event.clientX,
+			clientY: event.clientY
+		}));
+		window.setTimeout(() => delete opener.dataset.vmwareMonitoringContextMenu, 0);
+	}, true);
 })();
 </script>

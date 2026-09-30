@@ -84,7 +84,7 @@ class VMwareTabRenderer {
 			$cluster = trim((string) $m['cluster']);
 
 			$table->addRow([
-				self::hostActionLink($hypervisor['name'], $hypervisor['hostid'], true),
+				self::hostActionLink($hypervisor['name'], $hypervisor['hostid'], true, true),
 				(new CDiv([
 					(new CSpan($m['datacenter'] ?: '-'))->addClass('vmware-monitoring-muted'),
 					new CSpan($cluster !== '' ? $cluster : _('Standalone (no cluster)'))
@@ -308,7 +308,8 @@ class VMwareTabRenderer {
 			->addClass('vmware-monitoring-state-'.$state['kind']);
 	}
 
-	public static function hostActionLink(string $name, string $hostid, bool $show_sensors = false): CLinkAction {
+	public static function hostActionLink(string $name, string $hostid, bool $show_sensors = false,
+			bool $open_detail_on_click = false): CLinkAction {
 		$link = (new CLinkAction($name))
 			->addClass('vmware-monitoring-name')
 			->setMenuPopup(CMenuPopupHelper::getHost($hostid));
@@ -319,6 +320,9 @@ class VMwareTabRenderer {
 				->setArgument('hostid', $hostid)
 				->getUrl();
 			$link->setAttribute('data-vmware-monitoring-sensors-url', $sensors_url);
+			if ($open_detail_on_click) {
+				$link->setAttribute('data-vmware-monitoring-host-detail-url', $sensors_url);
+			}
 		}
 
 		return $link;
