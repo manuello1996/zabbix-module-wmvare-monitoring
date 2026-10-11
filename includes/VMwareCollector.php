@@ -119,6 +119,8 @@ class VMwareCollector {
 				'hypervisors' => 0,
 				'vms' => 0,
 				'datastores' => 0,
+				'datastore_ids' => [],
+				'problem_events' => [],
 				'datastore_attachments' => 0,
 				'problems' => [],
 				'problem_hostids' => [$hostid]
@@ -182,7 +184,10 @@ class VMwareCollector {
 				$result[$hostid]['vms'] += (int) ($vm_counts[$hypervisor_hostid]['vm_count'] ?? 0);
 			}
 
-			$result[$hostid]['datastores'] = count(self::uniqueDatastores($attachments_by_vcenter[$hostid]));
+			$result[$hostid]['datastore_ids'] = array_column(
+				self::uniqueDatastores($attachments_by_vcenter[$hostid]), 'identity'
+			);
+			$result[$hostid]['datastores'] = count($result[$hostid]['datastore_ids']);
 			$result[$hostid]['datastore_attachments'] = count($attachments_by_vcenter[$hostid]);
 		}
 
@@ -200,6 +205,7 @@ class VMwareCollector {
 				}
 			}
 			$counts = self::problemCountsByHosts([$vcenter_hostid => $events]);
+			$result[$vcenter_hostid]['problem_events'] = $events;
 			$result[$vcenter_hostid]['problems'] = $counts[$vcenter_hostid] ?? [];
 		}
 
@@ -1148,6 +1154,9 @@ class VMwareCollector {
 			static fn(): array => self::itemsByKeys([$hostid], $operational_keys)[$hostid]
 				?? array_fill_keys(array_values($operational_keys), null)
 		);
+		$metrics += self::cachedData('hypervisor.hardware.identifiers.'.$hostid, self::PERFORMANCE_CACHE_TTL,
+			static fn(): array => self::hypervisorHardwareIdentifiers($hostid)
+		);
 		$metrics['cpu_capacity'] = $metrics['cpu_cores'] !== null && $metrics['cpu_frequency'] !== null
 			? (float) $metrics['cpu_cores'] * (float) $metrics['cpu_frequency']
 			: null;
@@ -1205,6 +1214,32 @@ class VMwareCollector {
 
 	public static function clearSessionDataCache(): void {
 		CSessionHelper::unset([self::SESSION_CACHE_KEY]);
+	}
+
+	private static function hypervisorHardwareIdentifiers(string $hostid): array {
+		$result = ['serial_number' => null, 'bios_uuid' => null];
+		// Serial number discovery substitutes the UUID into the item key.
+		// Match the key prefix on this host rather than the unresolved prototype key.
+		$items = API::Item()->get([
+			'output' => ['key_', 'lastvalue', 'lastclock', 'state'],
+			'hostids' => [$hostid],
+			'search' => ['key_' => 'vmware.hv.hw.'],
+			'startSearch' => true,
+			'monitored' => true
+		]) ?: [];
+		usort($items, static fn(array $a, array $b): int => (int) $b['lastclock'] <=> (int) $a['lastclock']);
+		foreach ($items as $item) {
+			if (!self::hasRecentValue($item) || (int) ($item['state'] ?? ITEM_STATE_NORMAL) !== ITEM_STATE_NORMAL) {
+				continue;
+			}
+			$field = str_starts_with($item['key_'], 'vmware.hv.hw.serialnumber[') ? 'serial_number'
+				: (str_starts_with($item['key_'], 'vmware.hv.hw.uuid[') ? 'bios_uuid' : null);
+			$value = trim((string) $item['lastvalue']);
+			if ($field !== null && $value !== '' && $result[$field] === null) {
+				$result[$field] = $value;
+			}
+		}
+		return $result;
 	}
 
 	public static function alarms(string $vcenter_hostid): array {

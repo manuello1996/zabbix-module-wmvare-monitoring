@@ -20,14 +20,12 @@ $hypervisors_url = (new CUrl('zabbix.php'))
 	->setArgument('action', 'vmware.monitoring.view')
 	->setArgument('filter_hostid', [$data['vcenter']['hostid']])
 	->setArgument('filter_set', 1)
-	->setArgument('tab', 'hypervisors')
-	->setArgument('search', $cluster['name']);
+	->setArgument('tab', 'hypervisors');
 $vms_url = (new CUrl('zabbix.php'))
 	->setArgument('action', 'vmware.monitoring.view')
 	->setArgument('filter_hostid', [$data['vcenter']['hostid']])
 	->setArgument('filter_set', 1)
-	->setArgument('tab', 'vms')
-	->setArgument('search', $cluster['name']);
+	->setArgument('tab', 'vms');
 
 $page = (new CHtmlPage())
 	->setTitle(_('VMware cluster'))
@@ -317,7 +315,7 @@ foreach ($cluster['hypervisors'] as $hypervisor) {
 	$connection = VMwareFormatter::connectionState($m['connection']);
 	$health = VMwareFormatter::hypervisorHealth($m['health']);
 	$host_table->addRow([
-		VMwareTabRenderer::hostActionLink($hypervisor['name'], $hypervisor['hostid'], true),
+		VMwareTabRenderer::hostActionLink($hypervisor['name'], $hypervisor['hostid'], true, true),
 		(new CSpan($connection['text']))
 			->addClass('vmware-monitoring-state')
 			->addClass('vmware-monitoring-state-'.$connection['kind']),

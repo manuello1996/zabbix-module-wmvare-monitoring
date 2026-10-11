@@ -309,8 +309,11 @@ class VMwareTabRenderer {
 	}
 
 	public static function hostActionLink(string $name, string $hostid, bool $show_sensors = false,
-			bool $open_detail_on_click = false): CLinkAction {
-		$link = (new CLinkAction($name))
+			bool $open_detail_on_click = false): CLink {
+		$detail_url = (new CUrl('zabbix.php'))
+			->setArgument('action', 'vmware.monitoring.hypervisor')
+			->setArgument('hostid', $hostid)->getUrl();
+		$link = ($open_detail_on_click ? new CLink($name, $detail_url) : new CLinkAction($name))
 			->addClass('vmware-monitoring-name')
 			->setMenuPopup(CMenuPopupHelper::getHost($hostid));
 
@@ -322,10 +325,6 @@ class VMwareTabRenderer {
 				->getUrl();
 			$link->setAttribute('data-vmware-monitoring-sensors-url', $sensors_url);
 			if ($open_detail_on_click) {
-				$detail_url = (new CUrl('zabbix.php'))
-					->setArgument('action', 'vmware.monitoring.hypervisor')
-					->setArgument('hostid', $hostid)
-					->getUrl();
 				$link->setAttribute('data-vmware-monitoring-host-detail-url', $detail_url);
 			}
 		}

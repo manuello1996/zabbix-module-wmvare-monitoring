@@ -83,7 +83,8 @@
 		}
 
 		const opener = event.target.closest(selector);
-		if (opener === null) {
+		if (opener === null || (opener.matches(hostDetailSelector)
+				&& opener.dataset.vmwareMonitoringContextMenu !== '1')) {
 			return;
 		}
 
@@ -141,19 +142,17 @@
 	document.addEventListener('click', prepareSensorsEntry, true);
 	document.addEventListener('keydown', prepareSensorsEntry, true);
 
-	// Hypervisor names in the vCenter detail table have two deliberate actions:
+	// Hypervisor names in the vCenter and cluster detail tables have two deliberate actions:
 	// ordinary activation opens the VMware detail page, while the context menu
 	// stays the standard Zabbix host menu.
 	document.addEventListener('click', event => {
 		const opener = event.target.closest(hostDetailSelector);
-		if (opener === null || opener.dataset.vmwareMonitoringContextMenu === '1'
-				|| event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+		if (opener === null || opener.dataset.vmwareMonitoringContextMenu === '1') {
 			return;
 		}
 
-		event.preventDefault();
 		event.stopImmediatePropagation();
-		window.location.assign(opener.dataset.vmwareMonitoringHostDetailUrl);
+		// Let the real href handle ordinary and modified clicks without opening the host menu.
 	}, true);
 
 	document.addEventListener('keydown', event => {

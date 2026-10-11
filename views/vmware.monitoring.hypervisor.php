@@ -35,8 +35,7 @@ $hypervisors_url = (new CUrl('zabbix.php'))
 	->setArgument('action', 'vmware.monitoring.view')
 	->setArgument('filter_hostid', [$data['vcenter']['hostid']])
 	->setArgument('filter_set', 1)
-	->setArgument('tab', 'hypervisors')
-	->setArgument('search', $data['host']['name']);
+	->setArgument('tab', 'hypervisors');
 
 $page->addItem(
 	(new CDiv(
@@ -126,6 +125,8 @@ if ($data['tab'] === 'overview') {
 	$information->addRow([_('Cluster'), trim((string) $m['cluster']) !== ''
 		? $m['cluster'] : _('Standalone (no cluster)')]);
 	$information->addRow([_('Vendor / model'), trim((string) $m['vendor'].' '.$m['model']) ?: '-']);
+	$information->addRow([_('Hardware serial number'), $m['serial_number'] ?? '-']);
+	$information->addRow([_('BIOS UUID'), $m['bios_uuid'] ?? '-']);
 	$information->addRow([_('CPU model'), $m['cpu_model'] ?: '-']);
 	$information->addRow([_('ESXi version'), $m['version'] ?: '-']);
 	$information->addRow([_('Uptime'), VMwareFormatter::duration($m['uptime'])]);

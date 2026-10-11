@@ -2,6 +2,7 @@
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
+use Modules\VMwareMonitoring\Includes\VMwareLocationGroups;
 use Widgets\Problems\Includes\WidgetProblems;
 
 $this->addJsFile('items.js');
@@ -272,14 +273,40 @@ foreach ($data['vcenters'] as $vcenter) {
 		}
 
 		for ($depth = $common_parts; $depth < count($location_path); $depth++) {
-			$location_group = (new CDiv(
-				(new CSpan($location_path[$depth]))->addClass('vmware-monitoring-location-name')
-			))
+			$key = VMwareLocationGroups::key(array_slice($location_path, 0, $depth + 1));
+			$group = $data['location_groups'][$key];
+			$ancestors = [];
+			for ($ancestor = 1; $ancestor <= $depth; $ancestor++) {
+				$ancestors[] = VMwareLocationGroups::key(array_slice($location_path, 0, $ancestor));
+			}
+			$location_group = (new CDiv([
+				(new CButton(null, [
+					(new CSpan())->addClass('vmware-monitoring-location-chevron')->setAttribute('aria-hidden', 'true'),
+					(new CSpan($location_path[$depth]))->addClass('vmware-monitoring-location-name')
+				]))
+					->addClass('vmware-monitoring-location-toggle')
+					->setAttribute('data-vmware-location-toggle', $key)
+					->setAttribute('aria-expanded', $group['collapsed'] ? 'false' : 'true'),
+				(new CSpan(sprintf(_('%1$s vCenters'), $group['vcenters'])))
+					->addClass('vmware-monitoring-location-count')
+			]))
 				->addClass('vmware-monitoring-location-group')
 				->setAttribute('style', '--vmware-monitoring-location-depth: '.$depth);
-			$table->addRow([
-				(new CCol($location_group))->setColSpan(8)
-			], 'vmware-monitoring-location-row');
+			$group_row = (new CRow([
+				(new CCol($location_group))->setColSpan(2),
+				$problemBadge($group['problems'], $group['problem_hostids']),
+				'', (string) $group['hypervisors'], (string) $group['vms'], (string) $group['datastores'], ''
+			]))
+				->addClass('vmware-monitoring-location-row')
+				->setAttribute('data-vmware-location-key', $key)
+				->setAttribute('data-vmware-location-ancestors', json_encode($ancestors));
+			foreach ($ancestors as $ancestor_key) {
+				if ($data['location_groups'][$ancestor_key]['collapsed']) {
+					$group_row->setAttribute('hidden', 'hidden');
+					break;
+				}
+			}
+			$table->addRow($group_row);
 		}
 		$previous_location_path = $location_path;
 	}
@@ -305,7 +332,7 @@ foreach ($data['vcenters'] as $vcenter) {
 			->setAttribute('style', '--vmware-monitoring-location-depth: '.count($location_path));
 	}
 
-	$table->addRow([
+	$vcenter_row = new CRow([
 		$name_cell,
 		(new CSpan($health['text']))
 			->addClass('vmware-monitoring-state')
@@ -317,6 +344,18 @@ foreach ($data['vcenters'] as $vcenter) {
 		(string) $vcenter['datastores'],
 		$vcenter['inventory']['notes'] ?? ''
 	]);
+	$ancestors = [];
+	for ($depth = 1; $depth <= count($location_path); $depth++) {
+		$ancestors[] = VMwareLocationGroups::key(array_slice($location_path, 0, $depth));
+	}
+	$vcenter_row->setAttribute('data-vmware-location-ancestors', json_encode($ancestors));
+	foreach ($ancestors as $key) {
+		if ($data['location_groups'][$key]['collapsed']) {
+			$vcenter_row->setAttribute('hidden', 'hidden');
+			break;
+		}
+	}
+	$table->addRow($vcenter_row);
 }
 
 $page
@@ -327,6 +366,8 @@ $page
 					(new CSpan())->setId('vmware-monitoring-refresh-status')->addClass('vmware-monitoring-refresh-status')
 				]))->addClass('vmware-monitoring-section-title'),
 				$table,
+				(new CDiv())->setId('vmware-monitoring-location-save-status')
+					->setAttribute('role', 'status')->addClass(ZBX_STYLE_RED),
 				$data['paging']
 			]))->addClass('vmware-monitoring-section')
 		]))->setId('vmware-monitoring-tab-content')

@@ -5,6 +5,7 @@ window.vmware_monitoring = new class {
 		this.hostid = String(config.hostid || '');
 		this.panel = document.getElementById('vmware-monitoring-panel');
 		this.activeTab = String(config.tab || 'overview');
+		this.renderedTab = null;
 		this.state = new Map();
 		this.searchTimer = null;
 		this.request = null;
@@ -48,6 +49,7 @@ window.vmware_monitoring = new class {
 	}
 
 	activateTab(key, historyMode = null) {
+		window.clearTimeout(this.searchTimer);
 		this.activeTab = key;
 		document.querySelectorAll('[data-vmware-monitoring-tab]').forEach(tab => {
 			const active = tab.dataset.vmwareMonitoringTab === key;
@@ -107,12 +109,16 @@ window.vmware_monitoring = new class {
 				return;
 			}
 			window.clearTimeout(this.searchTimer);
+			const tab = this.activeTab;
+			const state = this.getState(tab);
+			state.search = event.target.value.trim();
+			state.page = 1;
 			this.searchTimer = window.setTimeout(() => {
-				const state = this.getState(this.activeTab);
-				state.search = event.target.value.trim();
-				state.page = 1;
+				if (this.activeTab !== tab) {
+					return;
+				}
 				this.updateUrl('push');
-				this.loadTab(this.activeTab);
+				this.loadTab(tab);
 			}, 350);
 		});
 
@@ -255,6 +261,8 @@ window.vmware_monitoring = new class {
 	}
 
 	async loadTab(tab, force = false) {
+		this.request?.abort();
+		this.request = null;
 		const state = this.getState(tab);
 		const cacheKey = this.cacheKey(tab, state);
 		const cached = this.tabCache.get(cacheKey);
@@ -264,13 +272,17 @@ window.vmware_monitoring = new class {
 			return;
 		}
 		this.tabCache.delete(cacheKey);
-		this.request?.abort();
 		const request = new AbortController();
 		this.request = request;
-		this.panel.replaceChildren(Object.assign(document.createElement('div'), {
+		const searchFocused = this.renderedTab === tab && this.panel.contains(document.activeElement)
+			&& document.activeElement.matches('[data-vmware-monitoring-server-search]');
+		this.panel.setAttribute('aria-busy', 'true');
+		if (!searchFocused) {
+			this.panel.replaceChildren(Object.assign(document.createElement('div'), {
 			className: 'vmware-monitoring-loading',
 			textContent: <?= json_encode(_('Loading...')) ?>
-		}));
+			}));
+		}
 		const url = new Curl('zabbix.php');
 		url.setArgument('action', 'vmware.monitoring.tab');
 		url.setArgument('hostid', this.hostid);
@@ -288,6 +300,10 @@ window.vmware_monitoring = new class {
 				throw new Error(`HTTP ${response.status}`);
 			}
 			const payload = await response.json();
+			if (this.request !== request || this.activeTab !== tab
+					|| this.cacheKey(tab, this.getState(tab)) !== cacheKey) {
+				return;
+			}
 			if ('error' in payload) {
 				throw new Error(payload.error.title || '');
 			}
@@ -300,16 +316,25 @@ window.vmware_monitoring = new class {
 			if (error.name === 'AbortError') {
 				return;
 			}
-			if (this.activeTab === tab) {
-				this.panel.replaceChildren(Object.assign(document.createElement('div'), {
+			if (this.request === request && this.activeTab === tab
+					&& this.cacheKey(tab, this.getState(tab)) === cacheKey) {
+				const message = Object.assign(document.createElement('div'), {
 					className: 'msg-bad',
 					textContent: <?= json_encode(_('Unable to load VMware data for this tab.')) ?>
-				}));
+				});
+				if (searchFocused) {
+					this.panel.querySelector('.msg-bad')?.remove();
+					this.panel.prepend(message);
+				}
+				else {
+					this.panel.replaceChildren(message);
+				}
 			}
 		}
 		finally {
 			if (this.request === request) {
 				this.request = null;
+				this.panel.removeAttribute('aria-busy');
 			}
 		}
 	}
@@ -318,7 +343,23 @@ window.vmware_monitoring = new class {
 		if (this.activeTab !== tab) {
 			return;
 		}
+		const input = document.activeElement;
+		const focused = this.renderedTab === tab && this.panel.contains(input)
+			&& input.matches('[data-vmware-monitoring-server-search]');
+		const selection = focused ? [input.selectionStart, input.selectionEnd, input.selectionDirection] : null;
 		this.panel.innerHTML = html;
+		this.renderedTab = tab;
+		this.panel.removeAttribute('aria-busy');
+		if (focused) {
+			const replacement = this.panel.querySelector('[data-vmware-monitoring-server-search]');
+			if (replacement) {
+				replacement.value = input.value;
+				replacement.focus({preventScroll: true});
+				if (selection[0] !== null) {
+					replacement.setSelectionRange(...selection);
+				}
+			}
+		}
 		document.dispatchEvent(new CustomEvent('zbx_reload', {
 			detail: {source: 'vmware-monitoring', tab}
 		}));

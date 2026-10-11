@@ -8,6 +8,10 @@
 	"version": "1.2.0",
 	"description": "vCenter, hypervisor, virtual machine, datastore and issue overview for the official Zabbix VMware template.",
 	"actions": {
+		"vmware.monitoring.location.state": {
+			"class": "CControllerVMwareLocationState",
+			"layout": "layout.json"
+		},
 		"vmware.monitoring.list": {
 			"class": "CControllerVMwareList",
 			"view": "vmware.monitoring.list",
@@ -32,7 +36,7 @@
 		},
 		"vmware.monitoring.hypervisor": {
 			"class": "CControllerVMwareSensors",
-			"view": "vmware.monitoring.sensors",
+			"view": "vmware.monitoring.hypervisor",
 			"layout": "layout.htmlpage"
 		},
 		"vmware.monitoring.cluster": {

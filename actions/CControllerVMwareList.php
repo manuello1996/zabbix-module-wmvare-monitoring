@@ -13,6 +13,7 @@ use CSettingsHelper;
 use CUrl;
 use CWebUser;
 use Modules\VMwareMonitoring\Includes\VMwareCollector;
+use Modules\VMwareMonitoring\Includes\VMwareLocationGroups;
 
 class CControllerVMwareList extends CController {
 	public const PROFILE_GROUPIDS = 'web.vmware.monitoring.list.filter.groupids';
@@ -140,12 +141,14 @@ class CControllerVMwareList extends CController {
 			'vcenters' => count($vcenters), 'hypervisors' => 0, 'vms' => 0,
 			'datastores' => 0, 'datastore_attachments' => 0
 		];
+		$datastore_ids = [];
 		foreach ($vcenters as $vcenter) {
 			$totals['hypervisors'] += $vcenter['hypervisors'];
 			$totals['vms'] += $vcenter['vms'];
-			$totals['datastores'] += $vcenter['datastores'];
+			$datastore_ids += array_fill_keys($vcenter['datastore_ids'], true);
 			$totals['datastore_attachments'] += $vcenter['datastore_attachments'];
 		}
+		$totals['datastores'] = count($datastore_ids);
 
 		usort($vcenters, static function (array $left, array $right): int {
 			$left_path = $left['location_path'] ?? [];
@@ -161,7 +164,8 @@ class CControllerVMwareList extends CController {
 
 			$parts = min(count($left_path), count($right_path));
 			for ($index = 0; $index < $parts; $index++) {
-				$comparison = strnatcasecmp($left_path[$index], $right_path[$index]);
+				$comparison = strnatcasecmp($left_path[$index], $right_path[$index])
+					?: strcmp($left_path[$index], $right_path[$index]);
 				if ($comparison !== 0) {
 					return $comparison;
 				}
@@ -172,6 +176,7 @@ class CControllerVMwareList extends CController {
 				?: (string) $left['hostid'] <=> (string) $right['hostid'];
 		});
 
+		$location_groups = VMwareLocationGroups::build($vcenters);
 		$paging = null;
 		$issues_paging = null;
 		$issues_has_more = false;
@@ -248,6 +253,7 @@ class CControllerVMwareList extends CController {
 				)
 			],
 			'vcenters' => $vcenters,
+			'location_groups' => $location_groups,
 			'issues' => $issues,
 			'problem_widget' => $problem_widget,
 			'totals' => $totals,

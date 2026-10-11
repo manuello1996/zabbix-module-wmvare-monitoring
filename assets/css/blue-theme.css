@@ -345,6 +345,9 @@
 }
 
 .vmware-monitoring-location-group {
+	display: flex;
+	align-items: center;
+	gap: 12px;
 	box-sizing: border-box;
 	padding-left: calc(var(--vmware-monitoring-location-depth, 0) * 20px);
 	color: var(--vmware-monitoring-text);
@@ -353,6 +356,52 @@
 .vmware-monitoring-location-name {
 	font-size: 12px;
 	font-weight: 600;
+}
+
+#vmware-monitoring-vcenters-table tr[hidden] {
+	display: none;
+}
+
+.vmware-monitoring-location-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	padding: 4px 6px;
+	border: 0;
+	background: transparent;
+	color: var(--vmware-monitoring-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.vmware-monitoring-location-toggle:hover {
+	background: var(--vmware-monitoring-card-bg);
+	color: var(--vmware-monitoring-accent);
+}
+
+.vmware-monitoring-location-toggle:focus-visible {
+	outline: 2px solid var(--vmware-monitoring-accent);
+	outline-offset: 2px;
+}
+
+.vmware-monitoring-location-chevron {
+	flex: 0 0 auto;
+	width: 6px;
+	height: 6px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg);
+	margin: 0 3px 3px;
+}
+
+.vmware-monitoring-location-toggle[aria-expanded="false"] .vmware-monitoring-location-chevron {
+	transform: rotate(-45deg);
+	margin-bottom: 0;
+}
+
+.vmware-monitoring-location-count {
+	font-size: 11px;
+	color: var(--vmware-monitoring-text-muted);
 }
 
 .vmware-monitoring-location-vcenter {

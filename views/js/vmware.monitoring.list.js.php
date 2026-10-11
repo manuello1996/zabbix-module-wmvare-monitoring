@@ -9,12 +9,34 @@ window.vmware_monitoring_list = new class {
 		this.tabs = [...document.querySelectorAll('[data-vmware-monitoring-list-tab]')];
 		this.tabContent = new Map();
 		this.tabRequests = new Map();
+		this.locationStates = new Map();
+		this.locationSaveQueue = Promise.resolve();
+		this.tabActivation = 0;
+		this.locationStorageKey = 'vmware.monitoring.location.pending.'
+			+ <?= json_encode((string) CWebUser::$data['userid']) ?>;
+		this.pendingLocationStates = new Map();
+		try {
+			for (const entry of JSON.parse(localStorage.getItem(this.locationStorageKey) || '[]')) {
+				if (/^[a-f0-9]{64}$/.test(entry.key) && typeof entry.collapsed === 'boolean') {
+					this.pendingLocationStates.set(entry.key, entry);
+					this.locationStates.set(entry.key, entry.collapsed);
+				}
+			}
+		}
+		catch (error) {
+			// The profile still works if browser storage is unavailable.
+		}
 		if (this.content !== null && this.summary !== null) {
-			this.tabContent.set(this.activeTab, {
+			this.tabContent.set(this.tabCacheKey(window.location.href), {
 				content: this.content.innerHTML,
 				summary: this.summary.innerHTML
 			});
 			this.content.addEventListener('contextmenu', event => this.openHostMenu(event));
+			this.content.addEventListener('click', event => this.toggleLocation(event));
+			this.applyLocationStates();
+		}
+		for (const entry of this.pendingLocationStates.values()) {
+			this.saveLocationState(entry);
 		}
 		this.bindTabs();
 		this.bindRefresh();
@@ -28,6 +50,79 @@ window.vmware_monitoring_list = new class {
 		}
 
 		this.preloadRemainingTabs();
+	}
+
+	applyLocationStates() {
+		this.content?.querySelectorAll('[data-vmware-location-toggle]').forEach(button => {
+			const key = button.dataset.vmwareLocationToggle;
+			if (!this.locationStates.has(key)) {
+				this.locationStates.set(key, button.getAttribute('aria-expanded') === 'false');
+			}
+			button.setAttribute('aria-expanded', this.locationStates.get(key) ? 'false' : 'true');
+		});
+		this.content?.querySelectorAll('[data-vmware-location-ancestors]').forEach(row => {
+			row.hidden = JSON.parse(row.dataset.vmwareLocationAncestors)
+				.some(key => this.locationStates.get(key) === true);
+		});
+	}
+
+	toggleLocation(event) {
+		const button = event.target.closest('[data-vmware-location-toggle]');
+		if (!button || !this.content.contains(button)) {
+			return;
+		}
+		const key = button.dataset.vmwareLocationToggle;
+		const collapsed = !this.locationStates.get(key);
+		this.locationStates.set(key, collapsed);
+		this.applyLocationStates();
+		const entry = {key, collapsed};
+		this.pendingLocationStates.set(key, entry);
+		this.storePendingLocationStates();
+		this.saveLocationState(entry);
+	}
+
+	storePendingLocationStates() {
+		try {
+			localStorage.setItem(this.locationStorageKey, JSON.stringify([...this.pendingLocationStates.values()]));
+		}
+		catch (error) {
+			// Keep the in-memory queue when browser storage is unavailable.
+		}
+	}
+
+	saveLocationState(entry) {
+		const {key, collapsed} = entry;
+		// Serialize writes so rapid toggles cannot persist an older state last.
+		// Pending writes are stored per user and replayed after navigation or reload.
+		this.locationSaveQueue = this.locationSaveQueue.then(async () => {
+			const response = await fetch('zabbix.php?action=vmware.monitoring.location.state', {
+				method: 'POST',
+				keepalive: true,
+				body: new URLSearchParams({
+					key, collapsed: collapsed ? '1' : '0',
+					<?= json_encode(CSRF_TOKEN_NAME) ?>: <?= json_encode(CCsrfTokenHelper::get('vmware.monitoring.location.state')) ?>
+				})
+			});
+			const result = await response.json();
+			if (!response.ok || result.success !== true) {
+				throw new Error('Location state was not saved.');
+			}
+			if (this.pendingLocationStates.get(key) === entry) {
+				this.pendingLocationStates.delete(key);
+				this.storePendingLocationStates();
+			}
+			if (this.pendingLocationStates.size === 0) {
+				const status = document.getElementById('vmware-monitoring-location-save-status');
+				if (status) {
+					status.textContent = '';
+				}
+			}
+		}).catch(() => {
+			const status = document.getElementById('vmware-monitoring-location-save-status');
+			if (status) {
+				status.textContent = <?= json_encode(_('Unable to save location groups. Your changes may be lost on reload.')) ?>;
+			}
+		});
 	}
 
 	bindRefresh() {
@@ -59,6 +154,7 @@ window.vmware_monitoring_list = new class {
 		}
 
 		this.activeTab = key;
+		const activation = ++this.tabActivation;
 		this.tabs.forEach(candidate => {
 			const active = candidate === tab;
 			candidate.classList.toggle('vmware-monitoring-tab-active', active);
@@ -70,18 +166,19 @@ window.vmware_monitoring_list = new class {
 
 		try {
 			const tab_data = await this.fetchTab(key, historyMode === null ? window.location.href : tab.href);
-			if (this.activeTab !== key) {
+			if (this.activeTab !== key || this.tabActivation !== activation) {
 				return;
 			}
 			this.content.innerHTML = tab_data.content;
 			this.summary.innerHTML = tab_data.summary;
+			this.applyLocationStates();
 			document.dispatchEvent(new CustomEvent('zbx_reload', {
 				detail: {source: 'vmware-monitoring-list', tab: key}
 			}));
 			this.setRefreshStatus();
 		}
 		catch (error) {
-			if (this.activeTab === key) {
+			if (this.activeTab === key && this.tabActivation === activation) {
 				this.content.replaceChildren(Object.assign(document.createElement('div'), {
 					className: 'msg-bad',
 					textContent: <?= json_encode(_('Unable to load VMware data for this tab.')) ?>
@@ -106,12 +203,20 @@ window.vmware_monitoring_list = new class {
 		}
 	}
 
+	tabCacheKey(url) {
+		const target = new URL(url, window.location.href);
+		target.hash = '';
+		target.searchParams.sort();
+		return target.href;
+	}
+
 	fetchTab(key, url) {
-		if (this.tabContent.has(key)) {
-			return Promise.resolve(this.tabContent.get(key));
+		const cacheKey = this.tabCacheKey(url);
+		if (this.tabContent.has(cacheKey)) {
+			return Promise.resolve(this.tabContent.get(cacheKey));
 		}
-		if (this.tabRequests.has(key)) {
-			return this.tabRequests.get(key);
+		if (this.tabRequests.has(cacheKey)) {
+			return this.tabRequests.get(cacheKey);
 		}
 
 		const request = fetch(url, {cache: 'no-store'})
@@ -129,11 +234,11 @@ window.vmware_monitoring_list = new class {
 					throw new Error('Tab content was not returned.');
 				}
 				const tab_data = {content: content.innerHTML, summary: summary.innerHTML};
-				this.tabContent.set(key, tab_data);
+				this.tabContent.set(cacheKey, tab_data);
 				return tab_data;
 			})
-			.finally(() => this.tabRequests.delete(key));
-		this.tabRequests.set(key, request);
+			.finally(() => this.tabRequests.delete(cacheKey));
+		this.tabRequests.set(cacheKey, request);
 		return request;
 	}
 
