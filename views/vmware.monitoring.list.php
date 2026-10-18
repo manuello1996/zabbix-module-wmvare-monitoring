@@ -3,10 +3,12 @@
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 use Modules\VMwareMonitoring\Includes\VMwareLocationGroups;
+use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 use Widgets\Problems\Includes\WidgetProblems;
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
+$this->addJsFile('class.tagfilteritem.js');
 $this->includeJsFile('vmware.monitoring.list.js.php');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
@@ -334,11 +336,11 @@ foreach ($data['vcenters'] as $vcenter) {
 
 	$vcenter_row = new CRow([
 		$name_cell,
-		(new CSpan($health['text']))
+		I::value((new CSpan($health['text']))
 			->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$health['kind']),
+			->addClass('vmware-monitoring-state-'.$health['kind']), $vcenter['metrics'], 'health'),
 		$problemBadge($vcenter['problems'], $vcenter['problem_hostids']),
-		$vcenter['metrics']['version'] ?? '-',
+		I::value($vcenter['metrics']['version'] ?? '-', $vcenter['metrics'], 'version'),
 		(string) $vcenter['hypervisors'],
 		(string) $vcenter['vms'],
 		(string) $vcenter['datastores'],

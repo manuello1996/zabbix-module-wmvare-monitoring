@@ -2,9 +2,11 @@
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
+use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
+$this->addJsFile('class.tagfilteritem.js');
 $this->includeJsFile('vmware.monitoring.view.js.php');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
@@ -123,13 +125,13 @@ $page->addItem(
 				(new CSpan($host_enabled ? _('Enabled') : _('Disabled')))
 					->addClass($host_enabled ? ZBX_STYLE_GREEN : ZBX_STYLE_RED),
 				(new CHostAvailability())->setInterfaces($data['host']['interfaces']),
-				(new CSpan($health['text']))
+				I::value((new CSpan($health['text']))
 					->addClass('vmware-monitoring-state')
-					->addClass('vmware-monitoring-state-'.$health['kind'])
+					->addClass('vmware-monitoring-state-'.$health['kind']), $data['vcenter_metrics'], 'health')
 			]))->addClass('vmware-monitoring-topbar-chips'),
 			(new CDiv([
-				new CSpan([_('Version').': ', $data['vcenter_metrics']['version'] ?? '-']),
-				new CSpan([_('Product').': ', $data['vcenter_metrics']['fullname'] ?? '-'])
+				new CSpan([_('Version').': ', I::value($data['vcenter_metrics']['version'] ?? '-', $data['vcenter_metrics'], 'version')]),
+				new CSpan([_('Product').': ', I::value($data['vcenter_metrics']['fullname'] ?? '-', $data['vcenter_metrics'], 'fullname')])
 			]))->addClass('vmware-monitoring-topbar-meta'),
 			(new CDiv([$makeIconButton('filter', _('Toggle filters'))]))
 				->addClass('vmware-monitoring-topbar-actions')

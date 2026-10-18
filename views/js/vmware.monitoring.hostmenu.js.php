@@ -7,6 +7,21 @@
 	const sensorsLabel = <?= json_encode(_('Sensors')) ?>;
 	const viewLabel = <?= json_encode(_('View')) ?>;
 	let activeObserver = null;
+	if (typeof getMenuPopupItem === 'function') {
+		const nativeItemMenu = getMenuPopupItem;
+		window.getMenuPopupItem = options => {
+			const sections = nativeItemMenu(options);
+			const action = new URLSearchParams((options.backurl || '').split('?')[1]).get('action');
+			if (!['vmware.monitoring.list', 'vmware.monitoring.view', 'vmware.monitoring.hypervisor',
+					'vmware.monitoring.cluster'].includes(action)) return sections;
+			const allowed = new Set([t('Item'), t('Graph'), t('Values'), t('500 latest values')]);
+			return sections.map(section => ({...section, items: section.items.filter(item =>
+				allowed.has(item.label) && (item.label !== t('Graph') || options.showGraph))}))
+				.filter(section => section.items.length)
+				.sort((a, b) => Number(b.items.some(item => item.label === t('Item')))
+					- Number(a.items.some(item => item.label === t('Item'))));
+		};
+	}
 	const hostView = typeof view === 'object' && view !== null
 		? view
 		: (window.view = {});
@@ -66,6 +81,7 @@
 
 	if (typeof hostView.editItem !== 'function') {
 		hostView.editItem = (target, itemData) => {
+			const originalUrl = location.href;
 			clearMessages();
 			const overlay = PopUp('item.edit', itemData, {
 				dialogueid: 'item-edit',
@@ -73,7 +89,14 @@
 				trigger_element: target,
 				prevent_navigation: true
 			});
-			overlay.$dialogue?.[0]?.addEventListener('dialogue.submit', refreshAfterEdit, {once: true});
+			const dialogue = overlay.$dialogue?.[0];
+			const restore = () => history.replaceState({}, '', originalUrl);
+			dialogue?.addEventListener('dialogue.close', restore, {once: true});
+			dialogue?.addEventListener('dialogue.submit', event => {
+				restore();
+				window.vmware_monitoring?.tabCache?.clear();
+				refreshAfterEdit(event);
+			}, {once: true});
 		};
 	}
 

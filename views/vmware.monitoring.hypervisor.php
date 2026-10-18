@@ -2,10 +2,12 @@
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
+use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 use Widgets\Problems\Includes\WidgetProblems;
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
+$this->addJsFile('class.tagfilteritem.js');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
 $page = (new CHtmlPage())
@@ -115,34 +117,34 @@ if ($data['tab'] === 'overview') {
 
 	$information = (new CTableInfo())->setHeader([_('Property'), _('Value')]);
 	$information->addRow([_('Connection'),
-		(new CSpan($connection['text']))->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$connection['kind'])]);
+		I::value((new CSpan($connection['text']))->addClass('vmware-monitoring-state')
+			->addClass('vmware-monitoring-state-'.$connection['kind']), $m, 'connection')]);
 	$information->addRow([_('Overall health'),
-		(new CSpan($health['text']))->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$health['kind'])]);
+		I::value((new CSpan($health['text']))->addClass('vmware-monitoring-state')
+			->addClass('vmware-monitoring-state-'.$health['kind']), $m, 'health')]);
 	$information->addRow([_('vCenter'), $data['vcenter']['name']]);
-	$information->addRow([_('Datacenter'), $m['datacenter'] ?: '-']);
+	$information->addRow([_('Datacenter'), I::value($m['datacenter'] ?: '-', $m, 'datacenter')]);
 	$information->addRow([_('Cluster'), trim((string) $m['cluster']) !== ''
-		? $m['cluster'] : _('Standalone (no cluster)')]);
-	$information->addRow([_('Vendor / model'), trim((string) $m['vendor'].' '.$m['model']) ?: '-']);
-	$information->addRow([_('Hardware serial number'), $m['serial_number'] ?? '-']);
-	$information->addRow([_('BIOS UUID'), $m['bios_uuid'] ?? '-']);
-	$information->addRow([_('CPU model'), $m['cpu_model'] ?: '-']);
-	$information->addRow([_('ESXi version'), $m['version'] ?: '-']);
-	$information->addRow([_('Uptime'), VMwareFormatter::duration($m['uptime'])]);
+		? I::value($m['cluster'], $m, 'cluster') : _('Standalone (no cluster)')]);
+	$information->addRow([_('Vendor / model'), new CSpan([I::value($m['vendor'] ?: '-', $m, 'vendor'), ' / ', I::value($m['model'] ?: '-', $m, 'model')])]);
+	$information->addRow([_('Hardware serial number'), I::value($m['serial_number'] ?? '-', $m, 'serial_number')]);
+	$information->addRow([_('BIOS UUID'), I::value($m['bios_uuid'] ?? '-', $m, 'bios_uuid')]);
+	$information->addRow([_('CPU model'), I::value($m['cpu_model'] ?: '-', $m, 'cpu_model')]);
+	$information->addRow([_('ESXi version'), I::value($m['version'] ?: '-', $m, 'version')]);
+	$information->addRow([_('Uptime'), I::value(VMwareFormatter::duration($m['uptime']), $m, 'uptime')]);
 	$information->addRow([_('Notes'), trim((string) ($data['host']['inventory']['notes'] ?? '')) ?: '-']);
 	$page->addItem((new CDiv([
 		(new CTag('h4', true, _('Hypervisor information')))->addClass('vmware-monitoring-section-title'),
 		$information
 	]))->addClass('vmware-monitoring-section'));
 
-	$utilization = static function ($value) {
+	$utilization = static function ($value, string $field) use ($m) {
 		if ($value === null) {
 			return '-';
 		}
 		$percent = max(0, min(100, (float) $value));
 		return (new CDiv([
-			new CSpan(VMwareFormatter::percent($value)),
+			I::value(VMwareFormatter::percent($value), $m, $field),
 			(new CDiv((new CDiv())->addClass('vmware-monitoring-progress-fill')
 				->addClass($percent >= 90 ? 'vmware-monitoring-progress-crit' : null)
 				->setAttribute('style', 'width: '.number_format($percent, 2, '.', '').'%')))
@@ -153,9 +155,9 @@ if ($data['tab'] === 'overview') {
 		_('Resource'), _('Total capacity'), _('Current use'), _('Utilization')
 	]);
 	$capacity->addRow([_('CPU'), VMwareFormatter::hertz($m['cpu_capacity']),
-		VMwareFormatter::hertz($m['cpu_used']), $utilization($m['cpu_pct'])]);
-	$capacity->addRow([_('Memory'), VMwareFormatter::bytes($m['memory_total']),
-		VMwareFormatter::bytes($m['memory_used']), $utilization($m['memory_pct'])]);
+		I::value(VMwareFormatter::hertz($m['cpu_used']), $m, 'cpu_used'), $utilization($m['cpu_pct'], 'cpu_pct')]);
+	$capacity->addRow([_('Memory'), I::value(VMwareFormatter::bytes($m['memory_total']), $m, 'memory_total'),
+		I::value(VMwareFormatter::bytes($m['memory_used']), $m, 'memory_used'), $utilization($m['memory_pct'], 'memory_pct')]);
 	$page->addItem((new CDiv([
 		(new CTag('h4', true, _('Hypervisor capacity')))->addClass('vmware-monitoring-section-title'),
 		$capacity
@@ -164,16 +166,20 @@ if ($data['tab'] === 'overview') {
 	$runtime = (new CTableInfo())->setHeader([_('Runtime information'), _('Value')]);
 	foreach ([
 		[_('CPU cores / threads'), ($m['cpu_cores'] !== null && $m['cpu_threads'] !== null)
-			? $m['cpu_cores'].' / '.$m['cpu_threads'] : '-'],
-		[_('Memory ballooned'), VMwareFormatter::bytes($m['memory_ballooned'])],
+			? new CSpan([I::value($m['cpu_cores'], $m, 'cpu_cores'), ' / ', I::value($m['cpu_threads'], $m, 'cpu_threads')]) : '-'],
+		[_('Memory ballooned'), I::value(VMwareFormatter::bytes($m['memory_ballooned']), $m, 'memory_ballooned')],
 		[_('Network received / sent'), ($m['network_in'] !== null && $m['network_out'] !== null)
-			? VMwareFormatter::bytes($m['network_in']).'/s / '.VMwareFormatter::bytes($m['network_out']).'/s' : '-'],
+			? new CSpan([I::value(VMwareFormatter::bytes($m['network_in']).'/s', $m, 'network_in'), ' / ',
+				I::value(VMwareFormatter::bytes($m['network_out']).'/s', $m, 'network_out')]) : '-'],
 		[_('Network packets dropped (in / out)'), ($m['network_dropped_in'] !== null
-			&& $m['network_dropped_out'] !== null) ? $m['network_dropped_in'].' / '.$m['network_dropped_out'] : '-'],
+			&& $m['network_dropped_out'] !== null) ? new CSpan([I::value($m['network_dropped_in'], $m, 'network_dropped_in'),
+				' / ', I::value($m['network_dropped_out'], $m, 'network_dropped_out')]) : '-'],
 		[_('Network errors (in / out)'), ($m['network_errors_in'] !== null
-			&& $m['network_errors_out'] !== null) ? $m['network_errors_in'].' / '.$m['network_errors_out'] : '-'],
+			&& $m['network_errors_out'] !== null) ? new CSpan([I::value($m['network_errors_in'], $m, 'network_errors_in'),
+				' / ', I::value($m['network_errors_out'], $m, 'network_errors_out')]) : '-'],
 		[_('Current / maximum power'), ($m['power'] !== null && $m['power_max'] !== null)
-			? number_format((float) $m['power'], 1).' W / '.number_format((float) $m['power_max'], 1).' W' : '-'],
+			? new CSpan([I::value(number_format((float) $m['power'], 1).' W', $m, 'power'), ' / ',
+				I::value(number_format((float) $m['power_max'], 1).' W', $m, 'power_max')]) : '-'],
 		[_('Datastore capacity / calculated free'),
 			VMwareFormatter::bytes($data['detail']['datastore_totals']['capacity']).' / '.
 			VMwareFormatter::bytes($data['detail']['datastore_totals']['free'])],
@@ -198,11 +204,13 @@ if ($data['tab'] === 'datastores') {
 		->setNoDataMessage(_('No datastores are attached to this hypervisor.'));
 	foreach ($data['detail']['datastores'] as $datastore) {
 		$datastores->addRow([
-			$datastore['name'], $datastore['type'] ?: '-', VMwareFormatter::bytes($datastore['total']),
-			VMwareFormatter::percent($datastore['free_pct']),
-			($datastore['read_latency'] ?? '-').' / '.($datastore['write_latency'] ?? '-').' ms',
-			($datastore['read_iops'] ?? '-').' / '.($datastore['write_iops'] ?? '-'),
-			$datastore['multipath'] ?? '-'
+			$datastore['name'], $datastore['type'] ?: '-', I::value(VMwareFormatter::bytes($datastore['total']), $datastore, 'total'),
+			I::value(VMwareFormatter::percent($datastore['free_pct']), $datastore, 'free_pct'),
+			new CSpan([I::value($datastore['read_latency'] ?? '-', $datastore, 'read_latency'), ' / ',
+				I::value($datastore['write_latency'] ?? '-', $datastore, 'write_latency'), ' ms']),
+			new CSpan([I::value($datastore['read_iops'] ?? '-', $datastore, 'read_iops'), ' / ',
+				I::value($datastore['write_iops'] ?? '-', $datastore, 'write_iops')]),
+			I::value($datastore['multipath'] ?? '-', $datastore, 'multipath')
 		]);
 	}
 	$page->addItem((new CDiv([
@@ -226,17 +234,17 @@ if ($data['tab'] === 'vms') {
 		$table->addRow([
 			(new CLinkAction($vm['name']))->setMenuPopup(CMenuPopupHelper::getHost($vm['hostid'])),
 			trim((string) ($vm['inventory']['notes'] ?? '')) ?: '-',
-			(new CSpan($power['text']))->addClass('vmware-monitoring-state')
-				->addClass('vmware-monitoring-state-'.$power['kind']),
-			(new CSpan($state['text']))->addClass('vmware-monitoring-state')
-				->addClass('vmware-monitoring-state-'.$state['kind']),
-			VMwareFormatter::percent($m['cpu']),
-			$m['memory_pct'] !== null ? VMwareFormatter::percent($m['memory_pct']).' / '.
-				VMwareFormatter::bytes($m['memory_total']) : VMwareFormatter::bytes($m['memory_total']),
-			VMwareFormatter::bytes($m['storage']),
-			VMwareFormatter::toolsStatus($m['tools']),
-			$m['snapshots'] !== null ? (string) $m['snapshots'] : '-',
-			VMwareFormatter::duration($m['uptime'])
+			I::value((new CSpan($power['text']))->addClass('vmware-monitoring-state')
+				->addClass('vmware-monitoring-state-'.$power['kind']), $m, 'power'),
+			I::value((new CSpan($state['text']))->addClass('vmware-monitoring-state')
+				->addClass('vmware-monitoring-state-'.$state['kind']), $m, 'state'),
+			I::value(VMwareFormatter::percent($m['cpu']), $m, 'cpu'),
+			new CSpan([$m['memory_pct'] !== null ? I::value(VMwareFormatter::percent($m['memory_pct']), $m, 'memory_pct') : '',
+				$m['memory_pct'] !== null ? ' / ' : '', I::value(VMwareFormatter::bytes($m['memory_total']), $m, 'memory_total')]),
+			I::value(VMwareFormatter::bytes($m['storage']), $m, 'storage'),
+			I::value(VMwareFormatter::toolsStatus($m['tools']), $m, 'tools'),
+			I::value($m['snapshots'] !== null ? (string) $m['snapshots'] : '-', $m, 'snapshots'),
+			I::value(VMwareFormatter::duration($m['uptime']), $m, 'uptime')
 		]);
 	}
 	$navigation = [];
@@ -353,9 +361,6 @@ $make_sensor_row = static function (array $sensor) use ($data): array {
 	if ($sensor['status_summary'] !== '') {
 		$status->setTitle($sensor['status_summary']);
 	}
-	$history_url = (new CUrl('history.php'))
-		->setArgument('action', HISTORY_VALUES)
-		->setArgument('itemids', [$sensor['itemid']]);
 	$problem_url = (new CUrl('zabbix.php'))
 		->setArgument('action', 'problem.view')
 		->setArgument('hostids', [$data['host']['hostid']])
@@ -393,10 +398,10 @@ $make_sensor_row = static function (array $sensor) use ($data): array {
 	}
 
 	return [[
-		(new CLink($sensor['name'], $history_url))->addClass('vmware-monitoring-name'),
+		I::link($sensor['name'], $sensor['itemid']),
 		trim($sensor['type']) !== '' ? trim($sensor['type']) : _('Other'),
 		$reading,
-		$status,
+		I::link($status, $sensor['itemid']),
 		$sensor['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, $sensor['lastclock']) : '-',
 		$collection,
 		$problems

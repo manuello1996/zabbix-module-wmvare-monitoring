@@ -648,3 +648,5 @@
 		animation: none;
 	}
 }
+
+.vmware-monitoring-item-value { color: inherit; }

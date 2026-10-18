@@ -3,7 +3,11 @@
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 use Modules\VMwareMonitoring\Includes\VMwareTabRenderer;
+use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 
+$this->addJsFile('items.js');
+$this->addJsFile('multilineinput.js');
+$this->addJsFile('class.tagfilteritem.js');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
 $cluster = $data['cluster'];
@@ -45,9 +49,9 @@ $page->addItem(
 			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			(new CSpan($cluster['name']))->addClass('vmware-monitoring-breadcrumb-current')
 		]),
-		(new CSpan($cluster_state['text']))
+		I::value((new CSpan($cluster_state['text']))
 			->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$cluster_state['kind'])
+			->addClass('vmware-monitoring-state-'.$cluster_state['kind']), $cluster, 'status')
 	]))->addClass('vmware-monitoring-topbar')
 );
 
@@ -172,7 +176,7 @@ foreach ($cluster['native'] as $field => $item) {
 	$label = preg_replace('/^Cluster \[[^\]]+\] /', '', $item['name']);
 	$native_table->addRow([
 		ucfirst((string) $label),
-		$native_value((string) $field, $item),
+		I::link($native_value((string) $field, $item), $item['itemid'] ?? null),
 		$item['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, $item['lastclock']) : '-'
 	]);
 }
@@ -316,19 +320,19 @@ foreach ($cluster['hypervisors'] as $hypervisor) {
 	$health = VMwareFormatter::hypervisorHealth($m['health']);
 	$host_table->addRow([
 		VMwareTabRenderer::hostActionLink($hypervisor['name'], $hypervisor['hostid'], true, true),
-		(new CSpan($connection['text']))
+		I::value((new CSpan($connection['text']))
 			->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$connection['kind']),
-		(new CSpan($health['text']))
+			->addClass('vmware-monitoring-state-'.$connection['kind']), $m, 'connection'),
+		I::value((new CSpan($health['text']))
 			->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$health['kind']),
-		VMwareFormatter::percent($m['cpu_pct']),
+			->addClass('vmware-monitoring-state-'.$health['kind']), $m, 'health'),
+		I::value(VMwareFormatter::percent($m['cpu_pct']), $m, 'cpu_pct'),
 		VMwareFormatter::hertz($m['cpu_capacity']),
-		VMwareFormatter::bytes($m['memory_used']),
-		VMwareFormatter::bytes($m['memory_total']),
-		$m['vm_count'] !== null ? (string) $m['vm_count'] : '-',
-		VMwareFormatter::duration($m['uptime']),
-		$m['version'] ?: '-',
+		I::value(VMwareFormatter::bytes($m['memory_used']), $m, 'memory_used'),
+		I::value(VMwareFormatter::bytes($m['memory_total']), $m, 'memory_total'),
+		I::value($m['vm_count'] !== null ? (string) $m['vm_count'] : '-', $m, 'vm_count'),
+		I::value(VMwareFormatter::duration($m['uptime']), $m, 'uptime'),
+		I::value($m['version'] ?: '-', $m, 'version'),
 		VMwareTabRenderer::problemBadge($hypervisor['problems'], $hypervisor['hostid'])
 	]);
 }

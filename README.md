@@ -130,6 +130,13 @@ Counts labelled **Virtual machines** or **Total VMs** come from the VM totals re
 hypervisors. **Discovered VMs** counts only VM hosts created by Zabbix discovery; the two values can
 differ when discovery filters, permissions, or data freshness differ.
 
+Values backed by individual monitoring items open the native Zabbix item menu on click:
+**Item**, **Graph** (numeric items), **Values**, and **500 latest values**. This includes vCenter
+properties, hypervisor and VM metrics, datastore measurements, cluster items, and sensor names
+and health states. Zabbix controls access and history availability. Calculated totals and
+physical sensor readings derived from the compact sensor payload remain ordinary values.
+The module works independently and does not require the NetApp module.
+
 ## Acknowledgements
 
 Module scaffolding and the original UI/UX approach were based on

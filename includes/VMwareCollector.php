@@ -58,6 +58,7 @@ class VMwareCollector {
 	private const PERFORMANCE_CACHE_TTL = 300;
 	private const OPERATIONAL_CACHE_TTL = 60;
 	private const SESSION_CACHE_KEY = 'vmware_monitoring_data_cache';
+	private const ITEM_MENU_CACHE_VERSION = 1;
 
 	public static function hasRecentValue(array $item): bool {
 		static $minimum_clock = null;
@@ -132,15 +133,17 @@ class VMwareCollector {
 		}
 
 		$items = API::Item()->get([
-			'output' => ['hostid', 'key_', 'lastvalue', 'lastclock'],
+			'output' => ['itemid', 'hostid', 'key_', 'lastvalue', 'lastclock'],
 			'hostids' => array_keys($hosts),
 			'filter' => ['key_' => array_keys(self::VCENTER_KEYS)],
 			'monitored' => true
 		]) ?: [];
 
 		foreach ($items as $item) {
-			if (isset(self::VCENTER_KEYS[$item['key_']]) && self::hasRecentValue($item)) {
-				$result[$item['hostid']]['metrics'][self::VCENTER_KEYS[$item['key_']]] = $item['lastvalue'];
+			if (isset(self::VCENTER_KEYS[$item['key_']])) {
+				$field = self::VCENTER_KEYS[$item['key_']];
+				$result[$item['hostid']]['metrics'][$field.'_itemid'] = $item['itemid'];
+				if (self::hasRecentValue($item)) { $result[$item['hostid']]['metrics'][$field] = $item['lastvalue']; }
 			}
 		}
 
@@ -773,7 +776,7 @@ class VMwareCollector {
 			'vmware.vm.cluster.name[{$VMWARE.URL},{$VMWARE.VM.UUID}]' => 'cluster'
 		]);
 		$status_items = API::Item()->get([
-			'output' => ['name', 'lastvalue', 'lastclock'],
+			'output' => ['itemid', 'name', 'lastvalue', 'lastclock'],
 			'selectTags' => ['tag', 'value'],
 			'hostids' => [$vcenter_hostid],
 			'search' => ['key_' => 'vmware.cluster.status['],
@@ -789,6 +792,7 @@ class VMwareCollector {
 				$result[$name] = [
 					'name' => $name, 'vcenter_hostid' => $vcenter_hostid,
 					'status' => self::hasRecentValue($item) ? $item['lastvalue'] : null,
+					'status_itemid' => (string) $item['itemid'],
 					'hypervisors' => 0, 'virtual_machines' => 0, 'discovered_vms' => 0,
 					'memory_total' => 0.0, 'memory_used' => 0.0
 				];
@@ -881,11 +885,12 @@ class VMwareCollector {
 		}
 
 		$cluster_status = null;
+		$cluster_status_itemid = null;
 		$cluster_triggerids = [];
 		$cluster_exists = $is_standalone && (bool) $hypervisors;
 		if (!$is_standalone) {
 			$status_items = API::Item()->get([
-				'output' => ['lastvalue', 'lastclock'],
+				'output' => ['itemid', 'lastvalue', 'lastclock'],
 				'selectTags' => ['tag', 'value'],
 				'selectTriggers' => ['triggerid'],
 				'hostids' => [$vcenter_hostid],
@@ -898,6 +903,7 @@ class VMwareCollector {
 				if (trim((string) ($tags['cluster'] ?? '')) === $cluster_name) {
 					$cluster_exists = true;
 					$cluster_status = self::hasRecentValue($item) ? $item['lastvalue'] : null;
+					$cluster_status_itemid = (string) $item['itemid'];
 					$cluster_triggerids = array_column($item['triggers'] ?? [], 'triggerid');
 					break;
 				}
@@ -1064,7 +1070,7 @@ class VMwareCollector {
 				'perf:"clusterServices/effectivemem[average]"'
 			];
 			$native_items = API::Item()->get([
-				'output' => ['name', 'key_', 'lastvalue', 'lastclock', 'state', 'error', 'units'],
+				'output' => ['itemid', 'name', 'key_', 'lastvalue', 'lastclock', 'state', 'error', 'units'],
 				'selectTags' => ['tag', 'value'],
 				'hostids' => [$vcenter_hostid],
 				'search' => ['key_' => 'vmware.cl'],
@@ -1092,6 +1098,7 @@ class VMwareCollector {
 				}
 				if ($field !== null && in_array($field, $allowed_native_fields, true)) {
 					$native[$field] = [
+						'itemid' => (string) $item['itemid'],
 						'name' => (string) $item['name'], 'value' => (string) $item['lastvalue'],
 						'units' => (string) ($item['units'] ?? ''), 'lastclock' => (int) $item['lastclock']
 					];
@@ -1102,6 +1109,7 @@ class VMwareCollector {
 		return [
 			'name' => $cluster_name,
 			'status' => $cluster_status,
+			'status_itemid' => $cluster_status_itemid,
 			'is_standalone' => $is_standalone,
 			'hypervisors' => array_values($hypervisors),
 			'totals' => $totals,
@@ -1202,12 +1210,13 @@ class VMwareCollector {
 		$cache = is_array($cache) ? $cache : [];
 		$entry = $cache[$key] ?? null;
 		if (is_array($entry) && (int) ($entry['created_at'] ?? 0) >= time() - $ttl
+				&& ($entry['item_menu_version'] ?? 0) === self::ITEM_MENU_CACHE_VERSION
 				&& array_key_exists('data', $entry)) {
 			return $entry['data'];
 		}
 
 		$data = $loader();
-		$cache[$key] = ['created_at' => time(), 'data' => $data];
+		$cache[$key] = ['created_at' => time(), 'data' => $data, 'item_menu_version' => self::ITEM_MENU_CACHE_VERSION];
 		CSessionHelper::set(self::SESSION_CACHE_KEY, $cache);
 		return $data;
 	}
@@ -1221,7 +1230,7 @@ class VMwareCollector {
 		// Serial number discovery substitutes the UUID into the item key.
 		// Match the key prefix on this host rather than the unresolved prototype key.
 		$items = API::Item()->get([
-			'output' => ['key_', 'lastvalue', 'lastclock', 'state'],
+			'output' => ['itemid', 'key_', 'lastvalue', 'lastclock', 'state'],
 			'hostids' => [$hostid],
 			'search' => ['key_' => 'vmware.hv.hw.'],
 			'startSearch' => true,
@@ -1237,6 +1246,7 @@ class VMwareCollector {
 			$value = trim((string) $item['lastvalue']);
 			if ($field !== null && $value !== '' && $result[$field] === null) {
 				$result[$field] = $value;
+				if (isset($item['itemid'])) { $result[$field.'_itemid'] = $item['itemid']; }
 			}
 		}
 		return $result;
@@ -1460,16 +1470,14 @@ class VMwareCollector {
 		]) ?: [];
 
 		foreach ($items as $item) {
-			if (!isset($key_map[$item['key_']]) || !self::hasRecentValue($item)) {
+			if (!isset($key_map[$item['key_']])) {
 				continue;
 			}
 
 			$field = $key_map[$item['key_']];
-			$result[$item['hostid']][$field] = $item['lastvalue'];
-			if (in_array($field, ['cpu', 'memory_pct'], true)) {
-				$result[$item['hostid']][$field.'_itemid'] = $item['itemid'];
-				$result[$item['hostid']][$field.'_value_type'] = $item['value_type'];
-			}
+			$result[$item['hostid']][$field.'_itemid'] = $item['itemid'];
+			$result[$item['hostid']][$field.'_value_type'] = $item['value_type'];
+			if (self::hasRecentValue($item)) { $result[$item['hostid']][$field] = $item['lastvalue']; }
 		}
 
 		return $result;
@@ -1551,6 +1559,7 @@ class VMwareCollector {
 
 			if ($field !== null) {
 				$result[$key][$field] = $item['lastvalue'];
+				$result[$key][$field.'_itemid'] = $item['itemid'];
 			}
 		}
 
@@ -1572,12 +1581,14 @@ class VMwareCollector {
 			}
 			elseif ($result[$identity]['total'] === null && $attachment['total'] !== null) {
 				$result[$identity]['total'] = $attachment['total'];
+				$result[$identity]['total_itemid'] = $attachment['total_itemid'] ?? null;
 			}
 
 			if ($attachment['free_pct'] !== null && (
 					$result[$identity]['free_pct'] === null
 					|| (float) $attachment['free_pct'] < (float) $result[$identity]['free_pct'])) {
 				$result[$identity]['free_pct'] = $attachment['free_pct'];
+				$result[$identity]['free_pct_itemid'] = $attachment['free_pct_itemid'] ?? null;
 			}
 
 			$hypervisor = trim((string) ($attachment['hypervisor'] ?? ''));

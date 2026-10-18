@@ -35,13 +35,13 @@ class VMwareTabRenderer {
 	private static function overview(array $data): CDiv {
 		$health = VMwareFormatter::vcenterHealth($data['vcenter_metrics']['health'] ?? null);
 		$table = (new CTableInfo())->setHeader([_('Property'), _('Value')]);
-		$table->addRow([_('Product'), $data['vcenter_metrics']['fullname'] ?? '-']);
-		$table->addRow([_('Version'), $data['vcenter_metrics']['version'] ?? '-']);
+		$table->addRow([_('Product'), VMwareItemMenu::value($data['vcenter_metrics']['fullname'] ?? '-', $data['vcenter_metrics'], 'fullname')]);
+		$table->addRow([_('Version'), VMwareItemMenu::value($data['vcenter_metrics']['version'] ?? '-', $data['vcenter_metrics'], 'version')]);
 		$table->addRow([
 			_('Overall health'),
-			(new CSpan($health['text']))
+			VMwareItemMenu::value((new CSpan($health['text']))
 				->addClass('vmware-monitoring-state')
-				->addClass('vmware-monitoring-state-'.$health['kind'])
+				->addClass('vmware-monitoring-state-'.$health['kind']), $data['vcenter_metrics'], 'health')
 		]);
 		$table->addRow([_('Hypervisors'), (string) $data['hypervisors_count']]);
 		$table->addRow([_('Virtual machines'), (string) $data['reported_vms_count']]);
@@ -89,19 +89,19 @@ class VMwareTabRenderer {
 					(new CSpan($m['datacenter'] ?: '-'))->addClass('vmware-monitoring-muted'),
 					new CSpan($cluster !== '' ? $cluster : _('Standalone (no cluster)'))
 				]))->addClass('vmware-monitoring-name-cell'),
-				self::state($connection),
-				self::state($health),
+				VMwareItemMenu::value(self::state($connection), $m, 'connection'),
+				VMwareItemMenu::value(self::state($health), $m, 'health'),
 				self::problemBadge($hypervisor['problems'], $hypervisor['hostid']),
 				(new CDiv([
-					(new CSpan(VMwareFormatter::percent($m['cpu'])))->addClass('vmware-monitoring-metric-value'),
+					VMwareItemMenu::value((new CSpan(VMwareFormatter::percent($m['cpu'])))->addClass('vmware-monitoring-metric-value'), $m, 'cpu'),
 					self::sparkline($m['cpu_itemid'] ?? null)
 				]))->addClass('vmware-monitoring-metric-cell'),
 				$memory_pct !== null
-					? VMwareFormatter::percent($memory_pct).' / '.VMwareFormatter::bytes($m['memory_total'])
+					? new CSpan([VMwareFormatter::percent($memory_pct).' / ', VMwareItemMenu::value(VMwareFormatter::bytes($m['memory_total']), $m, 'memory_total')])
 					: '-',
-				$m['vm_count'] !== null ? (string) $m['vm_count'] : '-',
-				VMwareFormatter::duration($m['uptime']),
-				$m['version'] ?: '-'
+				VMwareItemMenu::value($m['vm_count'] !== null ? (string) $m['vm_count'] : '-', $m, 'vm_count'),
+				VMwareItemMenu::value(VMwareFormatter::duration($m['uptime']), $m, 'uptime'),
+				VMwareItemMenu::value($m['version'] ?: '-', $m, 'version')
 			]);
 		}
 		return self::section(_('Discovered hypervisors'), [
@@ -137,20 +137,21 @@ class VMwareTabRenderer {
 					new CSpan($m['hypervisor'] ?: '-'),
 					$placement
 				]))->addClass('vmware-monitoring-name-cell'),
-				self::state($power),
-				self::state($state),
+				VMwareItemMenu::value(self::state($power), $m, 'power'),
+				VMwareItemMenu::value(self::state($state), $m, 'state'),
 				self::problemBadge($vm['problems'], $vm['hostid']),
 				(new CDiv([
-					(new CSpan(VMwareFormatter::percent($m['cpu'])))->addClass('vmware-monitoring-metric-value'),
+					VMwareItemMenu::value((new CSpan(VMwareFormatter::percent($m['cpu'])))->addClass('vmware-monitoring-metric-value'), $m, 'cpu'),
 					self::sparkline($m['cpu_itemid'] ?? null)
 				]))->addClass('vmware-monitoring-metric-cell'),
 				$m['memory_pct'] !== null
-					? VMwareFormatter::percent($m['memory_pct']).' / '.VMwareFormatter::bytes($m['memory_total'])
-					: VMwareFormatter::bytes($m['memory_total']),
-				VMwareFormatter::bytes($m['storage']),
-				VMwareFormatter::toolsStatus($m['tools']),
-				$m['snapshots'] !== null ? (string) $m['snapshots'] : '-',
-				VMwareFormatter::duration($m['uptime'])
+					? new CSpan([VMwareItemMenu::value(VMwareFormatter::percent($m['memory_pct']), $m, 'memory_pct'), ' / ',
+						VMwareItemMenu::value(VMwareFormatter::bytes($m['memory_total']), $m, 'memory_total')])
+					: VMwareItemMenu::value(VMwareFormatter::bytes($m['memory_total']), $m, 'memory_total'),
+				VMwareItemMenu::value(VMwareFormatter::bytes($m['storage']), $m, 'storage'),
+				VMwareItemMenu::value(VMwareFormatter::toolsStatus($m['tools']), $m, 'tools'),
+				VMwareItemMenu::value($m['snapshots'] !== null ? (string) $m['snapshots'] : '-', $m, 'snapshots'),
+				VMwareItemMenu::value(VMwareFormatter::duration($m['uptime']), $m, 'uptime')
 			]);
 		}
 
@@ -187,8 +188,8 @@ class VMwareTabRenderer {
 					(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
 					$row['type'] ?: '-',
 					$row['uuid'] ?: '-',
-					VMwareFormatter::bytes($row['total']),
-					VMwareFormatter::percent($row['free_pct']),
+					VMwareItemMenu::value(VMwareFormatter::bytes($row['total']), $row, 'total'),
+					VMwareItemMenu::value(VMwareFormatter::percent($row['free_pct']), $row, 'free_pct'),
 					self::hypervisorList($row['hypervisors']),
 					(string) $row['attachments']
 				]))
@@ -234,11 +235,13 @@ class VMwareTabRenderer {
 			$table->addRow([
 				$attachment['hypervisor'] ?: '-',
 				$attachment['type'] ?: '-',
-				VMwareFormatter::bytes($attachment['total']),
-				VMwareFormatter::percent($attachment['free_pct']),
-				($attachment['read_latency'] ?? '-').' / '.($attachment['write_latency'] ?? '-').' ms',
-				($attachment['read_iops'] ?? '-').' / '.($attachment['write_iops'] ?? '-'),
-				$attachment['multipath'] ?? '-'
+				VMwareItemMenu::value(VMwareFormatter::bytes($attachment['total']), $attachment, 'total'),
+				VMwareItemMenu::value(VMwareFormatter::percent($attachment['free_pct']), $attachment, 'free_pct'),
+				new CSpan([VMwareItemMenu::value($attachment['read_latency'] ?? '-', $attachment, 'read_latency'), ' / ',
+					VMwareItemMenu::value($attachment['write_latency'] ?? '-', $attachment, 'write_latency'), ' ms']),
+				new CSpan([VMwareItemMenu::value($attachment['read_iops'] ?? '-', $attachment, 'read_iops'), ' / ',
+					VMwareItemMenu::value($attachment['write_iops'] ?? '-', $attachment, 'write_iops')]),
+				VMwareItemMenu::value($attachment['multipath'] ?? '-', $attachment, 'multipath')
 			]);
 		}
 
@@ -265,7 +268,7 @@ class VMwareTabRenderer {
 			$cluster_link = (new CLink($row['name'], $detail_url))->addClass('vmware-monitoring-name');
 			$table->addRow([
 				$cluster_link,
-				self::state($status),
+				VMwareItemMenu::value(self::state($status), $row, 'status'),
 				(string) $row['hypervisors'],
 				(string) $row['virtual_machines'],
 				(string) $row['discovered_vms'],
@@ -287,7 +290,7 @@ class VMwareTabRenderer {
 					->addClass(CSeverityHelper::getStatusStyle((int) $row['severity']));
 			$table->addRow([
 				(new CSpan($row['name']))->addClass('vmware-monitoring-issue-text'),
-				(new CSpan(_('Active')))->addClass('vmware-monitoring-issue-status'),
+				VMwareItemMenu::link((new CSpan(_('Active')))->addClass('vmware-monitoring-issue-status'), $row['itemid'] ?? null),
 				$severity,
 				self::clock($row['lastclock'])
 			]);
