@@ -13,6 +13,65 @@ use CTag;
 use CUrl;
 
 class VMwareDvswitchRenderer {
+	private static function portDetailsId(string $hostid, string $uuid, array $port): string {
+		return 'dvs-port-'.substr(hash('sha256', $hostid.'/'.$uuid.'/'.$port['group'].'/'.$port['key']), 0, 20);
+	}
+
+	public static function portPanel(array $data): CDiv {
+		$states = ['up' => _('Link up'), 'down' => _('Attached, link down'),
+			'blocked' => _('Blocked'), 'conflict' => _('Conflict'),
+			'unknown' => _('Link unknown'), 'unused' => _('No attachment reported')];
+		$legend = [];
+		foreach ($states as $state => $label) {
+			$legend[] = new CSpan([
+				(new CSpan())->addClass('vmware-monitoring-dvs-led')->addClass('vmware-monitoring-dvs-port-'.$state),
+				$label
+			]);
+		}
+		$banks = [];
+		$groups = [];
+		foreach ($data['rows'] as $port) { $groups[$port['group']][] = $port; }
+		foreach ($groups as $group => $ports) {
+			$buttons = [];
+			foreach ($ports as $port) {
+				$state = $port['conflict'] === true ? 'conflict' : ($port['blocked'] === true ? 'blocked'
+					: ($port['up'] === true ? 'up' : (!$port['connected'] ? 'unused'
+						: ($port['up'] === false ? 'down' : 'unknown'))));
+				$label = _('Port').' '.$port['key'].' — '.$states[$state];
+				foreach (['entity', 'proxy'] as $field) {
+					if ($port[$field] !== null) { $label .= ' — '.($port[$field]['name'] ?? $port[$field]['id']); }
+				}
+				$name = $port['key'];
+				if (isset($port['entity']['name'])) {
+					$prefix = match ($port['entity']['type']) {
+						'VirtualMachine' => 'vm-', 'HostSystem' => 'uplink-', default => ''
+					};
+					if ($prefix !== '') { $name = $prefix.$port['entity']['name']; }
+				}
+				$buttons[] = (new CTag('button', true, [
+					(new CSpan())->addClass('vmware-monitoring-dvs-jack')->setAttribute('aria-hidden', 'true'),
+					new CSpan($name)
+				]))->setAttribute('type', 'button')->addClass('vmware-monitoring-dvs-port')
+					->addClass('vmware-monitoring-dvs-port-'.$state)->setTitle($label)
+					->setAttribute('aria-label', $label)->setAttribute('aria-controls',
+						self::portDetailsId((string) $data['vcenter']['hostid'], $data['switch']['uuid'], $port))
+					->setAttribute('data-vmware-dvs-port-open',
+						self::portDetailsId((string) $data['vcenter']['hostid'], $data['switch']['uuid'], $port));
+			}
+			$banks[] = (new CDiv([
+				new CTag('h5', true, (string) $group === '' ? _('No port group reported') : _('Port group ID').': '.$group),
+				(new CDiv($buttons))->addClass('vmware-monitoring-dvs-port-bank')
+			]))->addClass('vmware-monitoring-dvs-port-group');
+		}
+		return (new CDiv([
+			new CTag('h4', true, _('Port status')),
+			(new CDiv(_('Virtual ports on this page, using the current filters. Select a port to open its details.')))
+				->addClass('vmware-monitoring-muted'),
+			(new CDiv($legend))->addClass('vmware-monitoring-dvs-port-legend'),
+			(new CDiv($banks ?: [_('No matching ports.')]))->addClass('vmware-monitoring-dvs-port-banks')
+		]))->addClass('vmware-monitoring-dvs-port-panel');
+	}
+
 	public static function url(string $hostid, string $uuid, string $section = 'ports', array $filters = []): CUrl {
 		$url = (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.dvswitch')
 			->setArgument('hostid', $hostid)->setArgument('uuid', $uuid)->setArgument('section', $section);
@@ -53,7 +112,7 @@ class VMwareDvswitchRenderer {
 			$table->setHeader([_('Port'), _('Port group ID'), _('Attached entity / NIC'), _('Hypervisor'),
 				_('Link'), _('Blocked'), _('Conflict'), _('VLANs / trunk'), _('MAC / peer'), _('Details')]);
 			foreach ($rows as $port) {
-				$details_id = 'dvs-port-'.substr(hash('sha256', $hostid.'/'.$uuid.'/'.$port['group'].'/'.$port['key']), 0, 20);
+				$details_id = self::portDetailsId($hostid, $uuid, $port);
 				$fields = (new CTableInfo())->setHeader([_('Reported field'), _('Value')]);
 				foreach ($port['fields'] as $path => $value) { $fields->addRow([$path, $value]); }
 				$runtime = (new CTableInfo())->setHeader([_('Property'), _('Value')]);

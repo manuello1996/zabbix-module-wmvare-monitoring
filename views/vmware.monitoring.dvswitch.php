@@ -118,6 +118,7 @@ $note = match ($data['section']) {
 };
 $page->addItem((new CDiv([
 	(new CTag('h4', true, $sections[$data['section']]))->addClass('vmware-monitoring-section-title'),
-	new CDiv($note), (new CDiv(R::table($data)))->addClass('vmware-monitoring-dvs-table'), $data['paging']
+	new CDiv($note), $data['section'] === 'ports' ? R::portPanel($data) : null,
+	(new CDiv(R::table($data)))->addClass('vmware-monitoring-dvs-table'), $data['paging']
 ]))->addClass('vmware-monitoring-section'));
 $page->show();
