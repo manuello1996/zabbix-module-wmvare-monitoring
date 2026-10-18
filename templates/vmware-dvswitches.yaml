@@ -351,12 +351,12 @@ zabbix_export:
           return JSON.stringify(rows);
     macros:
     - macro: '{$VMWARE.DVS.INTERVAL}'
-      value: 5m
+      value: 30m
       description: Port snapshot interval. Fetching every port can be expensive on large switches.
     - macro: '{$VMWARE.DVS.DISCOVERY.INTERVAL}'
       value: 1h
     - macro: '{$VMWARE.DVS.INVENTORY.INTERVAL}'
-      value: 5m
+      value: 30m
       description: Refresh interval for the shared VM and hypervisor ID-to-name inventories.
     - macro: '{$VMWARE.DVS.NAME.MATCHES}'
       value: .*
