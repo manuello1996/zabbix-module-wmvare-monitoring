@@ -1,48 +1,31 @@
 # VMware Monitoring for Zabbix 7.0
 
-A read-only Zabbix frontend module that turns the data collected by Zabbix's official VMware
-template into a navigable overview of vCenters, hypervisors, virtual machines, clusters,
-datastores, vCenter issues, active problems, and hardware sensors.
-
-The module does not connect to VMware directly. It reads existing monitoring data through the
-Zabbix API and applies the permissions of the signed-in Zabbix user.
+Explore VMware infrastructure using the hosts, items, history, inventory and problems already
+collected by Zabbix. The module reads the Zabbix API with the signed-in user's permissions;
+Zabbix server or proxy collectors connect to vCenter.
 
 ## Features
 
-- Multi-vCenter overview with health, product, version, hypervisor, VM, datastore, and aggregated
-  vCenter, hypervisor, and discovered-VM problem summaries.
-- Optional nested vCenter location groups from the host macro `{$VMWARE.LOCATION}`, collapsible
-  at every level with per-user state saved in Zabbix CProfile.
-- vCenter detail pages with lazy-loaded tabs, so detailed data is requested only when opened.
-- Overview embeds the standard Zabbix Problems widget table in recent-problems mode with operational
-  data shown separately, scoped to the vCenter and its discovered hypervisor and VM hosts.
-- The embedded Problems table exposes the standard dashboard-widget hooks, including compatibility
-  with the Detail action provided by `Custom-Problem-Analysis` when that module is installed.
-- Hypervisor inventory with:
-  - datacenter and cluster placement;
-  - connection and VMware health state;
-  - active problems linked to **Monitoring → Problems**;
-  - 24-hour CPU history, memory utilization, VM count, uptime, ESXi version, vendor, and model;
-  - native Zabbix host popup with an additional Sensors entry.
-- Discovered VM inventory with:
-  - inventory notes and hypervisor, datacenter, and cluster placement;
-  - power and runtime state;
-  - active problems;
-  - 24-hour CPU history, memory, committed storage, VMware Tools, snapshots, and uptime;
-  - native Zabbix host popup for dashboards, problems, latest data, graphs, inventory, and
-    permitted configuration pages.
-- Cluster overview with separate hypervisor-reported and Zabbix-discovered VM counts.
-- Cluster details with current CPU and memory capacity, utilization, hardware/software composition,
-  datastore information, sensor summaries, active problems, and the cluster's hypervisors.
-- Datastore overview with expandable per-hypervisor attachments below each unique datastore,
-  including capacity, free space, latency, IOPS, and multipath information.
-- Hardware sensor page with current readings and units, VMware value-map states, unhealthy-state
-  details, related problems, collection errors, sorting, and multi-type checkbox filtering.
-- vCenter Issues view based on the alarm data already collected for the vCenter.
-- Server-side pagination for large VM and datastore inventories. Sensor pagination is applied after
-  its name, status, and type filters.
-- Pagination size follows the **Rows per page** setting in the user's Zabbix profile.
-- Zabbix blue, dark, and high-contrast dark theme support.
+| View | Information and actions |
+|---|---|
+| vCenters | Health, version, inventory notes, problems and resource counts, with optional nested location groups. |
+| vCenter overview | Product information, discovered resources and the native Zabbix Problems table. |
+| Hypervisors | Placement, connection, health, problems, 24-hour CPU sparklines, memory, VM count, uptime and ESXi version. |
+| Discovered VMs | Notes, placement, power and runtime states, problems, CPU history, memory, storage, VMware Tools, snapshots and uptime. |
+| Clusters | Health and resource counts, with detail pages for capacity, utilization, configuration, sensors, problems and member hypervisors. |
+| Datastores | Unique datastores with expandable per-hypervisor capacity, free space, latency, IOPS and multipath measurements. |
+| Issues and Problems | VMware alarm items and native Zabbix problem information scoped to the selected environment. |
+| Hypervisor details | Hardware and software information, capacity, runtime metrics, datastores, discovered VMs, problems and sensors. |
+
+Item-backed values open the native Zabbix menu: **Item**, **Graph** for numeric items,
+**Values**, and **500 latest values**. Zabbix determines configuration permissions and
+history availability. Native item and host dialogs allow authorized configuration changes.
+Calculated totals and physical sensor readings derived from the compact sensor payload have
+no individual source-item menu.
+
+Detail tabs load on demand. Search and sorting are available in supported inventories;
+pagination follows the user's **Rows per page** setting. The module supports Zabbix blue,
+dark and high-contrast dark themes and works independently of other monitoring modules.
 
 ## Screenshots
 
@@ -78,112 +61,127 @@ Hardware and software information, capacity and utilization, and access to relat
 
 ![Hypervisor detail page showing hardware information, CPU and memory capacity, and resource tabs](img/hypervisor-detail.png)
 
-## Module scope
-
-This repository contains a frontend module only. It:
-
-- reads hosts, items, history, problems, inventory, tags, and low-level discovery relationships
-  already stored in Zabbix;
-- identifies vCenter hosts by the monitored `vmware.version[{$VMWARE.URL}]` item rather than by a
-  host or template name;
-- associates hypervisors and VMs with the vCenter discovery rule that created them;
-- supports multiple vCenters and respects the current user's Zabbix permissions;
-- does not collect data directly from vCenter, store VMware credentials, create hosts, run VMware
-  discovery, or modify monitored objects;
-- does not replace or bundle the official Zabbix VMware templates.
-
-Hypervisors and VMs must be created by the host prototypes of the official VMware template.
-Manually created hosts linked directly to the hypervisor or guest templates cannot be associated
-reliably with a vCenter because they have no originating discovery relationship.
-
 ## Requirements
 
 | Component | Requirement |
 |---|---|
-| Zabbix server | 7.0 |
-| Zabbix frontend | 7.0 |
-| Monitoring | A configured vCenter host using the official Zabbix VMware template |
-| Permissions | Access to Monitoring and Latest data for the VMware hosts the user should see |
+| Zabbix | Server or proxy and frontend on version 7.0. |
+| Collection | VMware collectors enabled on the server or proxy responsible for the vCenter. |
+| Templates | Configured `VMware`, `VMware Hypervisor` and `VMware Guest` monitoring templates. |
+| Discovery | Hypervisor and VM hosts created by the vCenter template's host prototypes. |
+| Access | Permission to use Monitoring and Latest data, plus access to the relevant hosts. Configuration actions require additional Zabbix permissions. |
 
-## Installation
+The module identifies vCenters through the monitored item
+`vmware.version[{$VMWARE.URL}]`, rather than a host or template name. Hypervisors and VMs
+are associated through their originating low-level discovery rules. Manually created hosts
+linked only to a hypervisor or guest template lack that relationship and may not appear.
 
-1. Download or clone this repository into the Zabbix frontend module directory. A typical path is:
+The frontend module needs no Composer, npm, compilation or extra VMware credentials.
+Its optional demo tools have separate Python and Docker requirements.
 
-   ```text
-   /usr/share/zabbix/modules/vmware_monitoring
-   ```
+## Installation and upgrade
 
-2. Ensure the directory and its files are readable by the web server user.
-3. In Zabbix, open **Administration → General → Modules**.
-4. Select **Scan directory**.
-5. Enable **VMware Monitoring**.
-6. Open **Monitoring → VMware → Overview**.
+1. Copy this module into a directory under the Zabbix frontend's `modules` folder, for example
+   `/usr/share/zabbix/modules/vmware_monitoring`.
+2. Ensure the frontend can read the module files.
+3. Open **Administration → General → Modules**, select **Scan directory**, and enable
+   **VMware Monitoring**.
+4. Open **Monitoring → VMware**.
 
-No Composer, npm, Node.js, compilation, database migration, or additional VMware credentials are
-required. The module is loaded directly by the Zabbix frontend.
+For an upgrade, replace the module files, scan the directory again and reload the browser.
+Exclude the repository's `.git` directory from production packages.
 
-When upgrading, replace the module files, scan the module directory again, and reload the browser
-page. Do not copy the repository's `.git` directory into a packaged production installation.
+## Using the module
 
-## Usage
+1. Configure VMware collection in Zabbix and wait for discovery and the first samples.
+2. Open **Monitoring → VMware**. The main page offers **vCenters**, **Issues** and **Problems**.
+3. Select a vCenter to browse **Overview**, **Clusters**, **Hypervisors**, **Discovered VMs**,
+   **Datastores** and **vCenter Issues**.
+4. Click a hypervisor name to open its detail page; right-click it for the native Zabbix host
+   menu. VM names open the native host menu. Hypervisor host menus also include **Sensors**.
+5. Click a cluster name for cluster details, or expand a datastore to load attachment metrics.
+6. Click an item-backed value for its configuration, graph and history actions.
 
-1. Configure VMware monitoring with the official Zabbix 7.0 VMware template and wait for its
-   hypervisor and VM discovery rules to create hosts.
-2. Open **Monitoring → VMware → Overview** to see every accessible vCenter that has a monitored
-   `vmware.version[{$VMWARE.URL}]` item.
-3. Select a vCenter and use the Overview, Clusters, Hypervisors, Discovered VMs, Datastores, and
-   vCenter Issues tabs.
-4. Select hypervisor or VM names for links to native Zabbix pages. Hypervisor menus also provide
-   access to their sensor details.
-5. Use the filters before paging through large environments. Filter and sort selections are kept
-   when changing pages.
+**Refresh vCenters** updates the main inventory; **Refresh vCenter** clears the selected
+view's cached data and reloads the stored Zabbix results. These controls do not execute
+VMware checks or force discovery on the server or proxy.
 
-To group the main vCenter table, define `{$VMWARE.LOCATION}` directly on a vCenter host. A simple
-value such as `USA` creates one group. Comma-separated values create nested groups, for example
-`USA, New York`. vCenters without the macro remain ungrouped.
+Monitoring payloads are cached in private temporary files on the frontend, scoped to the
+user and login session. Only a small invalidation token enters the session cookie. When
+private storage is unavailable, data is read without that server cache.
 
-Use the arrow or location name to collapse or expand any level. Group rows show Problems,
-Hypervisors, Virtual machines, and Unique datastores for all filtered vCenters below that location,
-including those on other pages. Shared datastore identities and problem events are counted once
-per group. Child groups retain their own state when a parent is collapsed and reopened. Selections
-are saved for the signed-in Zabbix user and restored after reloads, refreshes, and tab changes.
-Pending changes are temporarily queued in browser storage per user and retried after reload;
-successfully saved state is held in Zabbix CProfile. The overview's Unique datastores total uses
-the same identity deduplication as location groups.
+### Location groups and inventory notes
 
-Hardware sensors appear only when the official template has discovered the corresponding sensor
-items. Enable the `{$VMWARE.HV.SENSOR.DISCOVERY}` macro for the required hypervisors and allow the
-discovery rule and items to collect their first values.
+Define the host macro `{$VMWARE.LOCATION}` directly on a vCenter:
 
-Current readings and VMware status-detail tooltips require the compact dependent text item
-`vmware.hv.sensors.data` in the adapted VMware template. It stores one hour of compact sensor data
-per hypervisor; without it, the sensor health states and problems remain available but the
-**Current reading** column displays `-`.
+```text
+USA
+USA, New York
+USA, New York, Rack 2
+```
 
-Counts labelled **Virtual machines** or **Total VMs** come from the VM totals reported by
-hypervisors. **Discovered VMs** counts only VM hosts created by Zabbix discovery; the two values can
-differ when discovery filters, permissions, or data freshness differ.
+Comma-separated values create nested groups. vCenters without the macro remain ungrouped.
+Click a group's arrow or name to collapse it; the state is saved per Zabbix user.
 
-Values backed by individual monitoring items open the native Zabbix item menu on click:
-**Item**, **Graph** (numeric items), **Values**, and **500 latest values**. This includes vCenter
-properties, hypervisor and VM metrics, datastore measurements, cluster items, and sensor names
-and health states. Zabbix controls access and history availability. Calculated totals and
-physical sensor readings derived from the compact sensor payload remain ordinary values.
-The module works independently and does not require the NetApp module.
+Group totals include all filtered descendant vCenters, including those on other pages.
+Shared datastore identities and problem events are deduplicated. Child groups retain their
+own collapse state when a parent is reopened.
 
-Monitoring payloads are cached in private temporary files on the frontend server, scoped
-to the current user and login session. Only a small invalidation token enters the session
-cookie. Refresh clears the cached generation. If private storage is unavailable, collection
-continues without the server cache; no additional PHP extension is required.
+Populate host inventory **Notes** (`{INVENTORY.NOTES}`) to display descriptive information
+in the vCenter and VM inventories and hypervisor details.
+
+### Hardware sensors
+
+Enable `{$VMWARE.HV.SENSOR.DISCOVERY}=true` on the relevant hypervisor and allow discovery
+and collection to complete. The Sensors tab provides name, status and type filters, current
+readings, health states, collection errors and related problems.
+
+Physical readings and health-detail tooltips require the additional dependent text item
+`vmware.hv.sensors.data` from the adapted monitoring template. Without that item, sensor
+health and problems remain available while **Current reading** displays `-`. Installing
+the UI module does not add or modify monitoring items or templates.
+
+### Understanding counts and missing values
+
+**Virtual machines** / **Total VMs** are hypervisor-reported totals. **Discovered VMs** counts
+VM hosts created by Zabbix discovery. Filters, permissions and sample availability can make
+these counts differ.
+
+Missing values can indicate absent items, unavailable samples or collection errors. Inspect
+native **Latest data** and the item's error before interpreting an empty value as healthy.
+CPU sparklines require retained history and build up after monitoring starts.
 
 ## Demo without VMware hardware
 
-An optional [drop-in VMware SOAP/REST mock](dev/mock-vmware/README.md) provides a simulated
-vCenter, two hypervisors, four VMs and two datastores. Run `python dev/mock-vmware/demo.py up`
-to install the isolated demo and `python dev/mock-vmware/demo.py down` to remove it.
-Healthy, degraded-vCenter and unresponsive scenarios exercise real Zabbix collection and
-triggers through a disposable proxy. The original templates and server configuration are
-unchanged. See the guide for simulator counter limitations and cleanup safeguards.
+The optional [VMware mock setup guide](dev/mock-vmware/README.md) provides a removable
+SOAP/REST simulation using `vcsim` and an isolated Zabbix proxy. The dataset contains one
+vCenter, one cluster, two hypervisors, four VMs and two datastores.
+
+Run these commands from the module directory:
+
+```powershell
+python dev/mock-vmware/demo.py up
+python dev/mock-vmware/demo.py status
+python dev/mock-vmware/demo.py scenario --scenario degraded
+python dev/mock-vmware/demo.py scenario --scenario unresponsive
+python dev/mock-vmware/demo.py scenario --scenario healthy
+python dev/mock-vmware/demo.py down
+```
+
+Setup requires Python 3.10+, Docker Compose, the three installed VMware templates and
+Zabbix API permissions to manage the isolated fixture. Enter the Zabbix password when
+prompted, or use `ZABBIX_PASSWORD` / `ZABBIX_API_TOKEN`. Allow **2–5 minutes** for discovery
+and initial samples; setup prints a link that refreshes the module's vCenter inventory.
+
+The helper clones the installed templates and creates demo objects; it preserves the
+original templates and existing server configuration. `down` removes the owned fixture
+and its disposable monitoring history, with safeguards against removing unrelated objects.
+
+The **degraded** scenario makes vCenter appliance health red and exercises the template's
+health trigger. **Unresponsive** exercises real SDK/REST timeouts while keeping scenario
+controls available. The simulator does not implement every vSphere counter or hardware
+failure; some device-specific metrics can remain unsupported. See the setup guide for
+network settings, endpoints, credentials, coverage limits and cleanup details.
 
 ## Acknowledgements
 
