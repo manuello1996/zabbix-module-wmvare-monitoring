@@ -1,0 +1,40 @@
+services:
+  simulator:
+    image: vmware/vcsim@sha256:3696e4bfeb750d53b72efe9f2ca06f926f5af4e14ea018cc20070863d0fddff5
+    command: ["-l", "0.0.0.0:8989", "-tls=false", "-username", "mock", "-password", "mock", "-dc", "1", "-cluster", "1", "-host", "2", "-standalone-host", "0", "-vm", "4", "-ds", "2"]
+    networks: [zabbix]
+    restart: "no"
+
+  vmware-mock:
+    build: .
+    image: zabbix-vmware-module-mock:local
+    environment:
+      VMWARE_SIMULATOR_URL: http://simulator:8989
+    ports: ["127.0.0.1:18989:8080"]
+    networks:
+      zabbix:
+        aliases: [vmware-module-mock]
+    depends_on: [simulator]
+    restart: "no"
+
+  proxy:
+    image: zabbix/zabbix-proxy-sqlite3:7.0.22-ubuntu
+    environment:
+      ZBX_HOSTNAME: vmware-module-demo-proxy
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_PROXYCONFIGFREQUENCY: 10
+      ZBX_DATASENDERFREQUENCY: 1
+      ZBX_STARTVMWARECOLLECTORS: 2
+      ZBX_VMWARECACHESIZE: 32M
+      ZBX_VMWAREFREQUENCY: 15
+      ZBX_VMWAREPERFFREQUENCY: 15
+      ZBX_VMWARETIMEOUT: 10
+      ZBX_TIMEOUT: 10
+    networks: [zabbix]
+    depends_on: [vmware-mock]
+    restart: "no"
+
+networks:
+  zabbix:
+    external: true
+    name: zabbix-network

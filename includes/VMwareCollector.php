@@ -7,7 +7,6 @@ use CProfile;
 use CRoleHelper;
 use CScreenProblem;
 use CSettingsHelper;
-use CSessionHelper;
 use CWebUser;
 use DB;
 use Manager;
@@ -57,8 +56,6 @@ class VMwareCollector {
 	private const DETAIL_CACHE_TTL = 600;
 	private const PERFORMANCE_CACHE_TTL = 300;
 	private const OPERATIONAL_CACHE_TTL = 60;
-	private const SESSION_CACHE_KEY = 'vmware_monitoring_data_cache';
-	private const ITEM_MENU_CACHE_VERSION = 1;
 
 	public static function hasRecentValue(array $item): bool {
 		static $minimum_clock = null;
@@ -1206,23 +1203,11 @@ class VMwareCollector {
 	}
 
 	private static function cachedData(string $key, int $ttl, callable $loader) {
-		$cache = CSessionHelper::get(self::SESSION_CACHE_KEY);
-		$cache = is_array($cache) ? $cache : [];
-		$entry = $cache[$key] ?? null;
-		if (is_array($entry) && (int) ($entry['created_at'] ?? 0) >= time() - $ttl
-				&& ($entry['item_menu_version'] ?? 0) === self::ITEM_MENU_CACHE_VERSION
-				&& array_key_exists('data', $entry)) {
-			return $entry['data'];
-		}
-
-		$data = $loader();
-		$cache[$key] = ['created_at' => time(), 'data' => $data, 'item_menu_version' => self::ITEM_MENU_CACHE_VERSION];
-		CSessionHelper::set(self::SESSION_CACHE_KEY, $cache);
-		return $data;
+		return VMwareDataCache::get($key, $ttl, $loader);
 	}
 
 	public static function clearSessionDataCache(): void {
-		CSessionHelper::unset([self::SESSION_CACHE_KEY]);
+		VMwareDataCache::clear();
 	}
 
 	private static function hypervisorHardwareIdentifiers(string $hostid): array {

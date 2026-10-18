@@ -1,2 +1,5 @@
 template.yml
 /tests
+/dev/mock-vmware/.demo-state.json
+/dev/mock-vmware/.demo-state.tmp
+__pycache__/

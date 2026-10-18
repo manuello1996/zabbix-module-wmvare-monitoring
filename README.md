@@ -44,6 +44,40 @@ Zabbix API and applies the permissions of the signed-in Zabbix user.
 - Pagination size follows the **Rows per page** setting in the user's Zabbix profile.
 - Zabbix blue, dark, and high-contrast dark theme support.
 
+## Screenshots
+
+The screenshots below use the synthetic VMware demo environment.
+
+### vCenter inventory
+
+Grouped vCenters with health, problem summaries, resource counts, and inventory notes.
+
+![vCenter inventory grouped by location, showing health, problems, resource counts, and notes](img/vCenters.png)
+
+### vCenter overview
+
+Product information, discovered resources, and the native Zabbix Problems table.
+
+![vCenter overview with product details, resource counts, and active Zabbix problems](img/Overview.png)
+
+### Clusters
+
+Cluster health, hypervisor and VM counts, and memory usage and capacity.
+
+![Cluster inventory showing health, hypervisor and VM counts, and memory capacity](img/cluster.png)
+
+### Hypervisors
+
+Host placement, connection and health states, CPU history, memory utilization, and uptime.
+
+![Hypervisor inventory with CPU sparklines, memory utilization, health, and uptime](img/Hypervisors.png)
+
+### Hypervisor details
+
+Hardware and software information, capacity and utilization, and access to related resources.
+
+![Hypervisor detail page showing hardware information, CPU and memory capacity, and resource tabs](img/hypervisor-detail.png)
+
 ## Module scope
 
 This repository contains a frontend module only. It:
@@ -136,6 +170,20 @@ properties, hypervisor and VM metrics, datastore measurements, cluster items, an
 and health states. Zabbix controls access and history availability. Calculated totals and
 physical sensor readings derived from the compact sensor payload remain ordinary values.
 The module works independently and does not require the NetApp module.
+
+Monitoring payloads are cached in private temporary files on the frontend server, scoped
+to the current user and login session. Only a small invalidation token enters the session
+cookie. Refresh clears the cached generation. If private storage is unavailable, collection
+continues without the server cache; no additional PHP extension is required.
+
+## Demo without VMware hardware
+
+An optional [drop-in VMware SOAP/REST mock](dev/mock-vmware/README.md) provides a simulated
+vCenter, two hypervisors, four VMs and two datastores. Run `python dev/mock-vmware/demo.py up`
+to install the isolated demo and `python dev/mock-vmware/demo.py down` to remove it.
+Healthy, degraded-vCenter and unresponsive scenarios exercise real Zabbix collection and
+triggers through a disposable proxy. The original templates and server configuration are
+unchanged. See the guide for simulator counter limitations and cleanup safeguards.
 
 ## Acknowledgements
 
