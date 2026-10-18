@@ -10,6 +10,7 @@ services:
     image: zabbix-vmware-module-mock:local
     environment:
       VMWARE_SIMULATOR_URL: http://simulator:8989
+      VMWARE_MOCK_DVS_DETAILS: ${VMWARE_MOCK_DVS_DETAILS:-true}
     ports: ["127.0.0.1:18989:8080"]
     networks:
       zabbix:

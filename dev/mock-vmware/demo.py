@@ -181,7 +181,12 @@ def install(api, args):
         proxyid = proxy['proxyid']
     templateid = next(t['templateid'] for t in templates if t['host'] == TEMPLATES['VMware'])
     if host:
-        if {t['templateid'] for t in host['parentTemplates']} != {templateid} or host['proxyid'] != proxyid:
+        linked = {t['templateid'] for t in host['parentTemplates']}
+        # The module's opt-in companion may be linked manually to the demo.
+        optional = api.call('template.get', {'output': ['templateid'],
+            'filter': {'host': 'VMware Distributed Switches'}}) if linked != {templateid} else []
+        allowed = {templateid} | {t['templateid'] for t in optional}
+        if templateid not in linked or not linked <= allowed or host['proxyid'] != proxyid:
             raise RuntimeError('Demo host has different template/proxy assignments; refusing to change it.')
     else:
         hostid = api.call('host.create', {'host': HOST, 'name': 'DEMO - VMware vCenter',

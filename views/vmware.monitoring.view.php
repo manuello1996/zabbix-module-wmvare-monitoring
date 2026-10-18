@@ -158,6 +158,7 @@ foreach ([
 	['hypervisors', _('Hypervisors')],
 	['vms', _('Discovered VMs')],
 	['datastores', _('Datastores')],
+	['dvswitches', _('Distributed switches')],
 	['alarms', _('vCenter Issues')]
 ] as $index => [$key, $label]) {
 	$active = $key === $data['initial_tab'];

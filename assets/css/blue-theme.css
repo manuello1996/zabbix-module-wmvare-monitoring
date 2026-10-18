@@ -650,3 +650,35 @@
 }
 
 .vmware-monitoring-item-value { color: inherit; }
+
+.vmware-monitoring-dvs-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 16px 0;
+}
+
+.vmware-monitoring-dvs-table { overflow-x: auto; margin-top: 12px; }
+.vmware-monitoring-dvs-detail-row[hidden] { display: none; }
+.vmware-monitoring-dvs-detail-row > td {
+	padding: 16px 20px;
+	white-space: normal;
+	background-color: var(--vmware-monitoring-surface-muted);
+}
+.vmware-monitoring-dvs-detail-grid {
+	display: grid;
+	grid-template-columns: minmax(230px, 1fr) minmax(320px, 2fr);
+	gap: 24px;
+	margin-bottom: 16px;
+}
+.vmware-monitoring-dvs-detail-grid > div { min-width: 0; }
+.vmware-monitoring-dvs-detail-grid h4 { margin: 0 0 8px; }
+.vmware-monitoring-dvs-detail-row table { width: 100%; table-layout: fixed; }
+.vmware-monitoring-dvs-detail-row td { white-space: pre-wrap; overflow-wrap: anywhere; }
+.vmware-monitoring-dvs-fields { width: 100%; }
+.vmware-monitoring-dvs-fields summary { cursor: pointer; color: var(--vmware-monitoring-accent); }
+.vmware-monitoring-dvs-fields td { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+	.vmware-monitoring-dvs-detail-grid { grid-template-columns: minmax(0, 1fr); }
+}

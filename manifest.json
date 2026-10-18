@@ -6,8 +6,13 @@
 	"name": "VMware Monitoring",
 	"namespace": "VMwareMonitoring",
 	"version": "1.2.0",
-	"description": "vCenter, hypervisor, virtual machine, datastore and issue overview for the official Zabbix VMware template.",
+	"description": "vCenter, hypervisor, virtual machine, datastore, optional distributed switch and issue overview for Zabbix VMware monitoring.",
 	"actions": {
+		"vmware.monitoring.dvswitch": {
+			"class": "CControllerVMwareDvswitch",
+			"view": "vmware.monitoring.dvswitch",
+			"layout": "layout.htmlpage"
+		},
 		"vmware.monitoring.location.state": {
 			"class": "CControllerVMwareLocationState",
 			"layout": "layout.json"

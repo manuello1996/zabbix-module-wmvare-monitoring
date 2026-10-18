@@ -14,6 +14,7 @@ Zabbix server or proxy collectors connect to vCenter.
 | Discovered VMs | Notes, placement, power and runtime states, problems, CPU history, memory, storage, VMware Tools, snapshots and uptime. |
 | Clusters | Health and resource counts, with detail pages for capacity, utilization, configuration, sensors, problems and member hypervisors. |
 | Datastores | Unique datastores with expandable per-hypervisor capacity, free space, latency, IOPS and multipath measurements. |
+| Distributed switches (opt-in) | Switch identities, port attachment and link counts, blocked ports, conflicts, collection errors and native item actions. |
 | Issues and Problems | VMware alarm items and native Zabbix problem information scoped to the selected environment. |
 | Hypervisor details | Hardware and software information, capacity, runtime metrics, datastores, discovered VMs, problems and sensors. |
 
@@ -141,6 +142,89 @@ Physical readings and health-detail tooltips require the additional dependent te
 health and problems remain available while **Current reading** displays `-`. Installing
 the UI module does not add or modify monitoring items or templates.
 
+### Distributed switches (optional template)
+
+Import [VMware Distributed Switches](templates/vmware-dvswitches.yaml) in **Data collection →
+Templates → Import**, then link it to the **same vCenter host** alongside the existing
+`VMware` template. It uses that host's `{$VMWARE.URL}`, `{$VMWARE.USERNAME}` and
+`{$VMWARE.PASSWORD}` macros. No additional host or VMware credentials are needed.
+The module does not automatically import or link templates. Its **Distributed switches**
+tab explains how to opt in when the companion is absent.
+
+The companion uses native `vmware.dvswitch.discovery` and
+`vmware.dvswitch.fetchports.get` simple checks. Discovery runs hourly; an unfiltered
+port-state snapshot runs every five minutes for each switch, including uplinks.
+Dependent items record total ports, attached ports, links up, attached ports with links
+down, blocked ports and conflicts. Missing runtime state is not counted as a down link.
+Blocked ports can reflect intentional policy; they have no default alert.
+
+The template normalizes both documented `{#DVS.*}` and Zabbix 7.0.22's actual
+`{#DVSWITCH.*}` discovery macros to support both payload forms.
+
+| Macro | Default | Purpose |
+|---|---|---|
+| `{$VMWARE.DVS.DISCOVERY.INTERVAL}` | `1h` | Switch discovery interval. |
+| `{$VMWARE.DVS.INTERVAL}` | `5m` | Port snapshot interval. |
+| `{$VMWARE.DVS.INVENTORY.INTERVAL}` | `5m` | Refresh the shared VM and hypervisor ID-to-name inventories for this vCenter. |
+| `{$VMWARE.DVS.NAME.MATCHES}` | `.*` | Include switch names matching this regular expression. |
+| `{$VMWARE.DVS.NAME.NOT_MATCHES}` | `CHANGE_IF_NEEDED` | Exclude switch names matching this expression. |
+| `{$VMWARE.DVS.CONFLICTS.MAX}` | `0` | Alert when every available sample in five minutes exceeds this count. |
+| `{$VMWARE.DVS.CONNECTED.DOWN.MAX}` | `0` | Same threshold for attached ports with an explicitly down link. |
+| `{$VMWARE.DVS.NODATA}` | `15m` | Alert when no successful port snapshot arrives; keep longer than the polling interval. |
+
+Override these macros on individual vCenter hosts as needed. Removed or filtered switches
+are disabled immediately and deleted after seven days. The raw port JSON is retained for
+one day; count history for seven days and trends for 90 days. Fetching every port can be
+costly on large switches: narrow the discovery filters or increase the interval and
+no-data window. The template creates two shared name-inventory items per vCenter,
+plus eight items and three triggers per switch, without
+creating an item for every port. It reports state snapshots, not bandwidth or packet rates.
+
+The tab provides search, pagination, sample timestamps and collection errors. Click a
+switch name to open its detail page, a count for native graph/history actions, or the
+collection timestamp for the source port item's actions.
+Collection errors and absent samples should be checked before interpreting zero counts
+as healthy. These switch-level triggers also appear in the existing native Problems view.
+
+The switch detail page uses the **existing state payload** for port information. VM names
+are resolved separately from one compact inventory snapshot shared by all switches:
+
+| Detail tab | Information |
+|---|---|
+| Ports | Port and group IDs, attached VM names, resolved hypervisor names, NIC identity/type, link/blocked/conflict states, VLAN ranges, trunking, MAC address and peer. Search VM/hypervisor names or reported values and filter by state, port group or resource. VM and host IDs remain available on hover and serve as labels when names cannot be resolved. |
+| Port details (expand a port) | A full-width row below the port, with runtime details beside paired counter columns and an expandable complete field/value view. The button supports keyboard activation and reports its expanded state. |
+| Port groups | Groups derived from port-group IDs, observed port/state counts, VLAN ranges and unique attached-resource counts. Group links filter the Ports tab. |
+| Connected resources | VM/hypervisor names and unique VM/host IDs with attached-entity versus proxy-host roles, observed port counts, group IDs and NICs. Resource links filter the Ports tab. |
+| Statistics | Every numeric port counter reported in the payload, summed across reporting ports, with explicit coverage counts. Includes unicast/multicast/broadcast bytes and packets, drops and exceptions when supplied. |
+| Problems | Active Zabbix events from triggers tagged with this switch's UUID; acknowledged and suppressed events remain identifiable. |
+
+Each tab is paginated using the user's Rows per page setting. Missing runtime fields
+display **Unknown** and missing counters remain unavailable. Counter sums preserve exact
+unsigned values and represent cumulative snapshots, not bandwidth rates; partial coverage
+is shown, and traffic traversing several ports may be counted several times. Resource and
+port-group names, switch MTU and other switch configuration are absent from this payload.
+Collection errors and old samples remain visible alongside the last stored snapshot.
+
+For VM and hypervisor name resolution, reimport the updated companion template with **Update existing**
+templates and **Create new** items enabled. The new regular text item
+`vmware.vm.discovery["{$VMWARE.URL}"]` stores only VM IDs and names from the native
+VMware collector; `vmware.hv.discovery["{$VMWARE.URL}"]` does the same for hypervisors.
+Quoted URLs keep these item keys distinct from the standard template's unquoted
+discovery-rule keys. These items create no additional discovery rules or hosts.
+VMware credentials stay with the server/proxy collector; the module performs one
+permission-scoped Zabbix API lookup for both inventories and all referenced IDs, not one request per port.
+IDs are matched by resource type within the selected vCenter. Repeated IDs are deduplicated;
+unknown, inaccessible or outdated inventories fall back to IDs. Inventory timestamps and
+resolution counts are shown on the detail page when the corresponding resources are present.
+An absent `connectee` in the port payload cannot be reconstructed from VM names alone.
+
+To opt out, **unlink and clear** only `VMware Distributed Switches` on that vCenter host.
+This removes its discovered items, triggers and history. Ordinary unlinking retains those
+items on the host and therefore retains collection. The standard VMware template is independent.
+
+References: [Zabbix 7.0 VMware keys](https://www.zabbix.com/documentation/7.0/en/manual/vm_monitoring/vmware_keys)
+and [port JSON structure](https://www.zabbix.com/documentation/7.0/en/manual/vm_monitoring/vmware_json#vmware.dvswitch.fetchports.get).
+
 ### Understanding counts and missing values
 
 **Virtual machines** / **Total VMs** are hypervisor-reported totals. **Discovered VMs** counts
@@ -155,7 +239,10 @@ CPU sparklines require retained history and build up after monitoring starts.
 
 The optional [VMware mock setup guide](dev/mock-vmware/README.md) provides a removable
 SOAP/REST simulation using `vcsim` and an isolated Zabbix proxy. The dataset contains one
-vCenter, one cluster, two hypervisors, four VMs and two datastores.
+vCenter, one cluster, two hypervisors, four VMs, two datastores and a distributed switch.
+The demo gateway provides eight populated switch ports, including VM attachments,
+modeled uplinks, VLANs and synthetic runtime/traffic counters. The opt-in template is
+required to collect and display switch data.
 
 Run these commands from the module directory:
 
@@ -177,8 +264,9 @@ The helper clones the installed templates and creates demo objects; it preserves
 original templates and existing server configuration. `down` removes the owned fixture
 and its disposable monitoring history, with safeguards against removing unrelated objects.
 
-The **degraded** scenario makes vCenter appliance health red and exercises the template's
-health trigger. **Unresponsive** exercises real SDK/REST timeouts while keeping scenario
+The **degraded** scenario makes vCenter appliance health red and models a blocked,
+conflicting VM port with its link down and growing error counters. **Healthy** restores
+the link and clears those flags. **Unresponsive** exercises real SDK/REST timeouts while keeping scenario
 controls available. The simulator does not implement every vSphere counter or hardware
 failure; some device-specific metrics can remain unsupported. See the setup guide for
 network settings, endpoints, credentials, coverage limits and cleanup details.

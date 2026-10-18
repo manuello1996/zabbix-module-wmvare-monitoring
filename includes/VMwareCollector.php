@@ -761,6 +761,153 @@ class VMwareCollector {
 		return $details;
 	}
 
+	/** Read only the opt-in template's items on the authorized vCenter host. */
+	public static function distributedSwitches(string $vcenter_hostid, int $page, int $per_page,
+			string $search = ''): array {
+		$rules = API::DiscoveryRule()->get([
+			'output' => ['itemid', 'state', 'error'], 'hostids' => [$vcenter_hostid],
+			'filter' => ['key_' => 'vmware.dvswitch.discovery[{$VMWARE.URL}]'], 'monitored' => true
+		]) ?: [];
+		$items = API::Item()->get([
+			'output' => ['itemid', 'key_', 'lastvalue', 'lastclock', 'state', 'error'],
+			'hostids' => [$vcenter_hostid], 'monitored' => true,
+			'search' => ['key_' => 'vmware.dvswitch.'], 'startSearch' => true,
+			'selectTags' => ['tag', 'value']
+		]) ?: [];
+		$rows = [];
+		$fields = ['ports', 'connected', 'link_up', 'connected_down', 'blocked', 'conflicts'];
+		foreach ($items as $item) {
+			$tags = array_column($item['tags'], 'value', 'tag');
+			$uuid = $tags['dvs.uuid'] ?? '';
+			$field = $tags['dvs.metric'] ?? '';
+			if ($uuid === '' || !in_array($field, [...$fields, 'raw', 'summary'], true)) { continue; }
+			if (!isset($rows[$uuid])) {
+				$rows[$uuid] = array_fill_keys($fields, null) + [
+					'name' => $tags['dvs.name'] ?? $uuid, 'uuid' => $uuid, 'vcenter_hostid' => $vcenter_hostid,
+					'errors' => [], 'lastclock' => 0
+				];
+			}
+			$row = &$rows[$uuid];
+			$row[$field.'_itemid'] = $item['itemid'];
+			if ((int) $item['state'] !== 0) {
+				$row['errors'][] = $item['error'] ?: _('Item is not supported.');
+			}
+			elseif (in_array($field, $fields, true) && self::hasRecentValue($item)) {
+				$row[$field] = $item['lastvalue'];
+			}
+			if ($field === 'raw') { $row['lastclock'] = (int) $item['lastclock']; }
+			unset($row);
+		}
+		if ($search !== '') {
+			$rows = array_filter($rows, static fn(array $row): bool =>
+				stripos($row['name'].' '.$row['uuid'], $search) !== false);
+		}
+		uasort($rows, static fn(array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
+		return self::paginateArray($rows, $page, $per_page) + [
+			'search' => $search, 'enabled' => (bool) $rules,
+			'discovery_errors' => array_values(array_filter(array_column($rules, 'error')))
+		];
+	}
+
+	public static function distributedSwitchDetail(string $vcenter_hostid, string $uuid): ?array {
+		$items = API::Item()->get([
+			'output' => ['itemid', 'key_', 'lastvalue', 'lastclock', 'state', 'error'],
+			'hostids' => [$vcenter_hostid], 'monitored' => true,
+			'search' => ['key_' => 'vmware.dvswitch.fetchports.get['], 'startSearch' => true,
+			'tags' => [['tag' => 'dvs.uuid', 'value' => $uuid, 'operator' => TAG_OPERATOR_EQUAL],
+				['tag' => 'dvs.metric', 'value' => 'raw', 'operator' => TAG_OPERATOR_EQUAL]],
+			'evaltype' => TAG_EVAL_TYPE_AND_OR, 'selectTags' => ['tag', 'value']
+		]) ?: [];
+		foreach ($items as $item) {
+			$tags = array_column($item['tags'], 'value', 'tag');
+			if (($tags['dvs.uuid'] ?? '') !== $uuid || ($tags['dvs.metric'] ?? '') !== 'raw') { continue; }
+			$detail = ['name' => $tags['dvs.name'] ?? $uuid, 'uuid' => $uuid, 'source' => $item,
+				'error' => (int) $item['state'] !== 0 ? ($item['error'] ?: _('Item is not supported.')) : '',
+				'snapshot' => null, 'vm_inventory' => null, 'host_inventory' => null, 'recent' => self::hasRecentValue($item)];
+			if ((int) $item['lastclock'] > 0 && $item['lastvalue'] !== '') {
+				try { $detail['snapshot'] = VMwareDvswitch::parse($item['lastvalue']); }
+				catch (\JsonException | \UnexpectedValueException $e) {
+					$detail['error'] = trim($detail['error'].' '._('Unable to read port snapshot:').' '.$e->getMessage());
+				}
+			}
+			if ($detail['snapshot'] !== null) {
+				$inventories = self::distributedSwitchResourceNames($vcenter_hostid,
+					VMwareDvswitch::vmIds($detail['snapshot']), VMwareDvswitch::hostIds($detail['snapshot']));
+				$detail = array_replace($detail, $inventories);
+				if ($detail['vm_inventory'] !== null) {
+					$detail['snapshot'] = VMwareDvswitch::withVmNames($detail['snapshot'], $detail['vm_inventory']['names']);
+				}
+				if ($detail['host_inventory'] !== null) {
+					$detail['snapshot'] = VMwareDvswitch::withHostNames($detail['snapshot'], $detail['host_inventory']['names']);
+				}
+			}
+			return $detail;
+		}
+		return null;
+	}
+
+	/** Resolve every referenced VM in one permission-scoped Zabbix API call, never per port. */
+	public static function distributedSwitchVmNames(string $vcenter_hostid, array $ids): array {
+		return self::distributedSwitchResourceNames($vcenter_hostid, $ids, [])['vm_inventory']
+			?? ['names' => [], 'error' => '', 'lastclock' => 0, 'itemid' => null];
+	}
+
+	/** Both inventories are read in one batch, scoped to the authorized vCenter. */
+	public static function distributedSwitchResourceNames(string $vcenter_hostid, array $vm_ids, array $host_ids): array {
+		$result = ['vm_inventory' => null, 'host_inventory' => null];
+		$requests = [];
+		if ($vm_ids) { $requests['vm_inventory'] = [VMwareDvswitch::VM_INVENTORY_KEY, $vm_ids]; }
+		if ($host_ids) { $requests['host_inventory'] = [VMwareDvswitch::HOST_INVENTORY_KEY, $host_ids]; }
+		if (!$requests) { return $result; }
+		$keys = array_column(array_values($requests), 0);
+		$items = API::Item()->get([
+			'output' => ['itemid', 'key_', 'lastvalue', 'lastclock', 'state', 'error'],
+			'hostids' => [$vcenter_hostid], 'monitored' => true,
+			'filter' => ['key_' => count($keys) === 1 ? $keys[0] : $keys]
+		]) ?: [];
+		$by_key = array_column($items, null, 'key_');
+		foreach ($requests as $field => [$key, $ids]) {
+			$result[$field] = self::distributedSwitchInventoryNames($by_key[$key] ?? null, $ids);
+		}
+		return $result;
+	}
+
+	private static function distributedSwitchInventoryNames(?array $item, array $ids): array {
+		$result = ['names' => [], 'error' => '', 'lastclock' => 0, 'itemid' => null];
+		if ($item === null) {
+			$result['error'] = _('Name inventory is not installed. Update the VMware Distributed Switches template.');
+			return $result;
+		}
+		$result['itemid'] = $item['itemid']; $result['lastclock'] = (int) $item['lastclock'];
+		if ((int) $item['state'] !== 0) {
+			$result['error'] = $item['error'] ?: _('Name inventory is not supported.');
+		}
+		elseif (!self::hasRecentValue($item)) {
+			$result['error'] = _('Name inventory is awaiting a recent sample.');
+		}
+		else {
+			try { $result['names'] = VMwareDvswitch::inventoryNames($item['lastvalue'], $ids); }
+			catch (\JsonException | \UnexpectedValueException $e) {
+				$result['error'] = _('Unable to read name inventory.');
+			}
+		}
+		return $result;
+	}
+
+	/** Scope native Zabbix events to this switch, never all vCenter problems. */
+	public static function distributedSwitchProblems(string $vcenter_hostid, string $uuid): array {
+		$triggers = API::Trigger()->get([
+			'output' => ['triggerid'], 'hostids' => [$vcenter_hostid], 'monitored' => true,
+			'tags' => [['tag' => 'dvs.uuid', 'value' => $uuid, 'operator' => TAG_OPERATOR_EQUAL]]
+		]) ?: [];
+		if (!$triggers) { return []; }
+		return API::Problem()->get([
+			'output' => ['eventid', 'objectid', 'name', 'clock', 'severity', 'acknowledged', 'suppressed'],
+			'objectids' => array_column($triggers, 'triggerid'), 'source' => EVENT_SOURCE_TRIGGERS,
+			'object' => EVENT_OBJECT_TRIGGER, 'sortfield' => ['eventid'], 'sortorder' => ZBX_SORT_DOWN
+		]) ?: [];
+	}
+
 	public static function clusters(string $vcenter_hostid): array {
 		$topology = self::discoveredTopology($vcenter_hostid, true, true);
 		$hv_metrics = self::itemsByKeys(array_keys($topology['hypervisors']), [

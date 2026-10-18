@@ -21,7 +21,8 @@ class Module extends CModule {
 					->setId('main-menu-vmware')
 					->setAction('vmware.monitoring.list')
 					->setAliases([
-						'vmware.monitoring.view', 'vmware.monitoring.cluster', 'vmware.monitoring.hypervisor'
+						'vmware.monitoring.view', 'vmware.monitoring.cluster', 'vmware.monitoring.hypervisor',
+						'vmware.monitoring.dvswitch'
 					])
 			);
 	}

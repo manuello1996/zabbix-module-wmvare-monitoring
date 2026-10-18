@@ -27,7 +27,7 @@ class CControllerVMwareView extends CController {
 				'filter_set' => 'in 1',
 			'filter_rst' => 'in 1',
 			'force_vcenter_refresh' => 'in 1',
-				'tab' => 'in overview,hypervisors,vms,datastores,clusters,alarms',
+				'tab' => 'in overview,hypervisors,vms,datastores,dvswitches,clusters,alarms',
 				'page' => 'ge 1',
 				'search' => 'string',
 				'sort' => 'in name,cluster,cpu,memory,vms,uptime,version,total,free,attachments',

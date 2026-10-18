@@ -41,6 +41,8 @@ Created objects are marked with `fixture=vmware-module-mock-v1`. The fixture con
 - proxy `vmware-module-demo-proxy`;
 - group `VMware module demo` and template group `Templates/VMware module demo`;
 - one datacenter and cluster, two hypervisors, four VMs, and two shared datastores;
+- distributed switch `DVS0`, with four VM NIC ports, two modeled physical uplinks,
+  and two unused ports when detailed switch simulation is enabled;
 - location macro `{$VMWARE.LOCATION}=Demo, VMware simulator`;
 - inventory notes `Synthetic VMware vCenter infrastructure` on the vCenter.
 
@@ -76,8 +78,8 @@ python dev/mock-vmware/demo.py scenario --scenario healthy
 
 | Scenario | Behavior |
 |---|---|
-| `healthy` | Simulator inventory/performance and green vCenter appliance health. |
-| `degraded` | REST appliance health becomes red, exercising the cloned template's actual vCenter health trigger. SOAP inventory remains available. |
+| `healthy` | Simulator inventory/performance, green appliance health, VM NICs and uplinks up; unused ports have no attachment. |
+| `degraded` | Appliance health becomes red. The first VM NIC port is blocked, link-down and conflicting, with growing drop/exception counters. SOAP inventory remains available. |
 | `unresponsive` | SDK and appliance requests receive no headers/body, exercising real collector timeouts. Control endpoints and liveness stay available for recovery. |
 
 New samples and problem/recovery events depend on the actual polling/template intervals.
@@ -86,14 +88,74 @@ collection failure is reported; the mock does not inject synthetic problem event
 
 ## Coverage limits
 
+To exercise optional distributed-switch monitoring, import
+[`templates/vmware-dvswitches.yaml`](../../templates/vmware-dvswitches.yaml) and link
+**VMware Distributed Switches** to **DEMO - VMware vCenter** alongside its demo template.
+For faster local collection, set `{$VMWARE.DVS.INTERVAL}=15s` and
+`{$VMWARE.DVS.DISCOVERY.INTERVAL}=1m` on that host. Repeating `up` accepts this companion;
+`down` removes its host link with the demo but preserves the imported companion template.
+
+The simulator includes `DVS0`. The gateway translates its base
+`DistributedVirtualSwitch` SOAP type to the `VmwareDistributedVirtualSwitch` subtype
+Zabbix discovers. A read-only, batched SDK inventory query supplies the **actual simulator**
+VM IDs, NIC keys, MAC addresses, host placement, switch UUID and port-group membership.
+Its result is cached for 30 seconds per SDK session; the temporary ContainerView is destroyed
+after each inventory refresh. No credentials or monitoring records are written by this helper.
+
+The pinned vcsim leaves DVPort keys, attachments and runtime fields incomplete. The gateway
+therefore models complete `FetchDVPorts` responses for this disposable fixture:
+
+| Field | Demo behavior |
+|---|---|
+| VM attachments | One port per actual distributed-backed VM NIC, with the real VM ID, NIC key, MAC and host reference. |
+| Port keys | Actual keys when present; otherwise stable `vm-ID-nic-KEY` keys derived from the NIC identity. |
+| Uplinks | One modeled `vmnic0` per participating host, in the simulator's actual uplink group. The pinned simulator omits uplink flags, so its `DVS*-DVUplinks-*` group name identifies that group. |
+| Unused ports | One modeled, unattached port per reported port group. |
+| VLANs | Synthetic VLAN 100 for VM ports; VLAN 0–4094 trunking for uplinks. |
+| Runtime | Link, block/conflict, peer, DirectPath, host-local, cookie, timestamp and explicit synthetic-status details. |
+| Counters | Sixteen cumulative byte/packet/drop/exception counters per port. Attached-port traffic grows over time; the degraded VM port accumulates drops and exceptions. |
+| Port configuration | Names, descriptions and config versions are available in full SDK responses. Zabbix `state` mode excludes configuration nodes as usual. |
+
+The module's Ports and Connected resources tabs can now display all four VM names through
+the companion template's real batched VM-name lookup. The default dataset has **eight ports,
+six attachments and six links up**. Degraded has one blocked/conflicting VM port and five
+links up. Returning to healthy restores its link and clears the flags; cumulative error
+counters retain their history. Counters reset when the gateway container is recreated.
+
+Native port criteria (attachment, active/link state, uplink, NSX, host, port key and inside/
+outside port-group selection) are applied after modeling. SOAP faults are preserved. If
+inventory enrichment fails, the gateway returns native vcsim data rather than manufacturing
+healthy results; `/_mock/status` and `demo.py status` report an enrichment error.
+
+The added runtime states, VLANs, port assignments where absent, uplinks and counters are
+**synthetic test telemetry**, not measured network traffic or a complete vSphere implementation.
+`statusDetail` labels synthetic port states. The behavior exists only in the demo gateway;
+the frontend module has no special fixture path.
+
+To compare against untouched native DVPort payloads, disable enrichment and recreate only
+the gateway (set the variable to `true` and repeat to re-enable it):
+
+```powershell
+$env:VMWARE_MOCK_DVS_DETAILS = 'false'
+docker compose --project-name vmware-module-mock --file dev/mock-vmware/compose.yaml up -d vmware-mock
+```
+
+The updated companion also collects a shared VM ID/name inventory through the native
+VMware collector, resolving all referenced VM IDs in one Zabbix API read. The simulator
+provides VM IDs and names independently of port enrichment. When enrichment is disabled,
+native ports can omit `connectee` and no VM-to-port assignment can be inferred from names
+alone. Regression checks cover populated attachments, selection criteria, batch resolution,
+name search, scenario recovery and ID fallback.
+
 vcsim implements a subset of vSphere, rather than a complete appliance. Some datastore
 and device-specific performance counters are unavailable and can remain unsupported in
 Zabbix. Available simulator samples are synthetic, not realistic load or benchmark results.
 The gateway normalizes vcsim's literal wildcard performance-series instance to the empty
 aggregate instance expected by Zabbix, enabling aggregate CPU history and sparklines.
-It does not manufacture missing device counters.
+This normalization does not fill missing datastore or hardware-device counters. The synthetic
+distributed-port counters described above are a separate, explicit fixture feature.
 
-`degraded` tests vCenter appliance health; it does not simulate every host hardware, SAN,
+`degraded` tests vCenter appliance health and the selected distributed-port failure; it does not simulate every host hardware, SAN,
 VMware alarm, HA or storage failure. This fixture does not run real VMs or expose a vCenter UI.
 Discovery and simple-check collection use the same SDK protocol as real VMware monitoring,
 as described in the [Zabbix 7.0 documentation](https://www.zabbix.com/documentation/7.0/en/manual/vm_monitoring).
@@ -114,6 +176,26 @@ Run `up` again to recreate the dataset. Repeating `up` while it exists reuses th
 objects; it does not overwrite changes to the existing cloned templates.
 
 ## Development checks
+
+Distributed-switch checks (Python requires PyYAML; JavaScript tests require Node.js,
+or `NODE_BINARY` pointing to its executable):
+
+```powershell
+python -B -m unittest discover -s dev/tests -p 'test_dvs*.py'
+docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-wmvare-monitoring/dev/tests/dvswitches.php /usr/share/zabbix
+docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-wmvare-monitoring/dev/tests/dvswitch-detail.php /usr/share/zabbix
+docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-wmvare-monitoring/dev/tests/dvswitch-vm-names.php /usr/share/zabbix
+docker exec zabbix-dev-zabbix-dashboard-1 php /usr/share/zabbix/modules/zabbix-module-wmvare-monitoring/dev/tests/dvswitch-host-names.php /usr/share/zabbix
+```
+
+Native menu/dialog regression checks use Zabbix's actual menu implementation:
+
+```powershell
+node dev/tests/dvswitch-menu.mjs ../../zabbix-src-7.0/ui/js/menupopup.js
+node dev/tests/dvswitch-port-details.mjs
+```
+
+Adjust the second argument to the location of your Zabbix 7.0 frontend source.
 
 ```powershell
 python -B -m unittest discover -s tests -p 'test_mock_vmware.py'

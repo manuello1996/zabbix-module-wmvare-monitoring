@@ -1,0 +1,376 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+    name: Templates/Applications
+  templates:
+  - uuid: 02aed5a3b15b4ae796abda429cef4e34
+    template: VMware Distributed Switches
+    name: VMware Distributed Switches
+    description: Opt-in companion to the standard VMware template for Zabbix 7.0. Link to the same vCenter host;
+      uses its VMWARE.URL, VMWARE.USERNAME and VMWARE.PASSWORD macros. Discovers distributed switches and summarizes
+      native FetchDVPorts state snapshots. No traffic-rate claims or changes to the standard template.
+    groups:
+    - name: Templates/Applications
+    items:
+    - uuid: 31944c93e58848bfa27d7463c9bd4396
+      name: 'DVS: VM names by managed object ID'
+      type: SIMPLE
+      key: 'vmware.vm.discovery["{$VMWARE.URL}"]'
+      delay: '{$VMWARE.DVS.INVENTORY.INTERVAL}'
+      history: 1d
+      value_type: TEXT
+      trends: '0'
+      username: '{$VMWARE.USERNAME}'
+      password: '{$VMWARE.PASSWORD}'
+      description: >-
+        One VM inventory snapshot per vCenter, shared by every distributed switch. Uses the native VMware collector
+        discovery data to resolve VirtualMachine managed object IDs to names in a batch. The quoted URL key is
+        distinct from the standard VMware template's unquoted discovery-rule key; both invoke the same native check.
+        This is a regular text item, not another discovery rule, and creates no VM hosts.
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |-
+          var rows = JSON.parse(value);
+          if (!Array.isArray(rows)) { throw 'Expected VM inventory array'; }
+          var names = [];
+          for (var i = 0; i < rows.length; i++) {
+              var row = rows[i];
+              if (typeof row['{#VM.ID}'] !== 'string' || typeof row['{#VM.NAME}'] !== 'string') {
+                  throw 'Missing VM inventory identity';
+              }
+              names.push({id: row['{#VM.ID}'], name: row['{#VM.NAME}']});
+          }
+          return JSON.stringify(names);
+      tags:
+      - tag: component
+        value: inventory
+    - uuid: e2052f7c7be2451b940c1ff946e9e954
+      name: 'DVS: Hypervisor names by managed object ID'
+      type: SIMPLE
+      key: 'vmware.hv.discovery["{$VMWARE.URL}"]'
+      delay: '{$VMWARE.DVS.INVENTORY.INTERVAL}'
+      history: 1d
+      value_type: TEXT
+      trends: '0'
+      username: '{$VMWARE.USERNAME}'
+      password: '{$VMWARE.PASSWORD}'
+      description: >-
+        One compact hypervisor ID/name inventory per vCenter, shared by all switches. The quoted URL keeps this
+        regular text item distinct from the standard template's unquoted hypervisor discovery rule.
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |-
+          var rows = JSON.parse(value);
+          if (!Array.isArray(rows)) { throw 'Expected hypervisor inventory array'; }
+          var names = [];
+          for (var i = 0; i < rows.length; i++) {
+              var row = rows[i];
+              if (typeof row['{#HV.ID}'] !== 'string' || typeof row['{#HV.NAME}'] !== 'string') {
+                  throw 'Missing hypervisor inventory identity';
+              }
+              names.push({id: row['{#HV.ID}'], name: row['{#HV.NAME}']});
+          }
+          return JSON.stringify(names);
+      tags:
+      - tag: component
+        value: inventory
+    discovery_rules:
+    - uuid: a301c1b9fa3d4337b4228a11735d928c
+      name: Distributed switch discovery
+      type: SIMPLE
+      key: vmware.dvswitch.discovery[{$VMWARE.URL}]
+      delay: '{$VMWARE.DVS.DISCOVERY.INTERVAL}'
+      lifetime: 7d
+      enabled_lifetime_type: DISABLE_IMMEDIATELY
+      username: '{$VMWARE.USERNAME}'
+      password: '{$VMWARE.PASSWORD}'
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#DVS.NAME}'
+          value: '{$VMWARE.DVS.NAME.MATCHES}'
+          formulaid: A
+        - macro: '{#DVS.NAME}'
+          value: '{$VMWARE.DVS.NAME.NOT_MATCHES}'
+          operator: NOT_MATCHES_REGEX
+          formulaid: B
+      item_prototypes:
+      - uuid: d01aad19bc324f8c870e268f7d2069fc
+        name: 'DVS {#DVS.NAME}: Get ports'
+        type: SIMPLE
+        key: vmware.dvswitch.fetchports.get[{$VMWARE.URL},"{#DVS.UUID}",,state]
+        delay: '{$VMWARE.DVS.INTERVAL}'
+        history: 1d
+        value_type: TEXT
+        trends: '0'
+        username: '{$VMWARE.USERNAME}'
+        password: '{$VMWARE.PASSWORD}'
+        description: Unfiltered port-state snapshot, including uplinks. Source data for the module's switch detail
+          page. Per-port details use this payload without creating additional monitoring items.
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: raw
+        trigger_prototypes:
+        - uuid: fa16a3181be0475291acdd9b75ced5bb
+          expression: nodata(/VMware Distributed Switches/vmware.dvswitch.fetchports.get[{$VMWARE.URL},"{#DVS.UUID}",,state],{$VMWARE.DVS.NODATA})=1
+          name: 'DVS {#DVS.NAME}: No port data'
+          priority: WARNING
+          description: No successful port snapshot during the configured period. Check VMware credentials, collector
+            availability and the source item error.
+          tags:
+          - tag: scope
+            value: availability
+          - tag: dvs.uuid
+            value: '{#DVS.UUID}'
+      - uuid: 0fbeddce654a45a0920792fad18e21e0
+        name: 'DVS {#DVS.NAME}: Port summary'
+        type: DEPENDENT
+        key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        history: '0'
+        value_type: TEXT
+        trends: '0'
+        master_item:
+          key: vmware.dvswitch.fetchports.get[{$VMWARE.URL},"{#DVS.UUID}",,state]
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |-
+            var data = JSON.parse(value);
+            if (!data || !Object.prototype.hasOwnProperty.call(data, 'FetchDVPortsResponse')) {
+                throw 'Missing FetchDVPortsResponse';
+            }
+            var response = data.FetchDVPortsResponse;
+            var ports = response && response.returnval;
+            if (ports === undefined || ports === null) { ports = []; }
+            else if (!Array.isArray(ports)) { ports = [ports]; }
+            var result = {ports: ports.length, connected: 0, link_up: 0, connected_down: 0, blocked: 0, conflicts: 0};
+            function yes(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
+            function no(v) { return v === false || v === 'false' || v === 0 || v === '0'; }
+            for (var i = 0; i < ports.length; i++) {
+                var p = ports[i];
+                if (!p || typeof p !== 'object' || p.key === undefined) { throw 'Invalid distributed port'; }
+                var connected = !!(p.connectee && p.connectee.connectedEntity);
+                var runtime = (p.state && p.state.runtimeInfo) || {};
+                if (connected) { result.connected++; }
+                if (yes(runtime.linkUp)) { result.link_up++; }
+                if (connected && no(runtime.linkUp)) { result.connected_down++; }
+                if (yes(runtime.blocked)) { result.blocked++; }
+                if (yes(p.conflict)) { result.conflicts++; }
+            }
+            return JSON.stringify(result);
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: summary
+      - uuid: e3b96a4f20eb4cf89b0d0392ddc3e1fd
+        name: 'DVS {#DVS.NAME}: Ports'
+        type: DEPENDENT
+        key: vmware.dvswitch.ports["{#DVS.UUID}"]
+        history: 7d
+        trends: 90d
+        description: All returned ports, including unconnected ports and uplinks.
+        master_item:
+          key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.ports
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: ports
+      - uuid: 1b511fb8deaa424ab1d597582788e8be
+        name: 'DVS {#DVS.NAME}: Connected ports'
+        type: DEPENDENT
+        key: vmware.dvswitch.connected["{#DVS.UUID}"]
+        history: 7d
+        trends: 90d
+        description: Ports with a connectedEntity; this is attachment, not link health.
+        master_item:
+          key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.connected
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: connected
+      - uuid: 97c098a4254247eaadd62afacf4eaff5
+        name: 'DVS {#DVS.NAME}: Links up'
+        type: DEPENDENT
+        key: vmware.dvswitch.link_up["{#DVS.UUID}"]
+        history: 7d
+        trends: 90d
+        description: Ports whose runtimeInfo.linkUp is explicitly true.
+        master_item:
+          key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.link_up
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: link_up
+      - uuid: 4ace297f69df4165ada5a480458dc303
+        name: 'DVS {#DVS.NAME}: Connected ports with link down'
+        type: DEPENDENT
+        key: vmware.dvswitch.connected_down["{#DVS.UUID}"]
+        history: 7d
+        trends: 90d
+        description: Attached ports whose runtimeInfo.linkUp is explicitly false. Missing runtime state is not a
+          link failure.
+        master_item:
+          key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.connected_down
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: connected_down
+        trigger_prototypes:
+        - uuid: 37a08c96b5164977b7cdd27375fefa6e
+          expression: min(/VMware Distributed Switches/vmware.dvswitch.connected_down["{#DVS.UUID}"],5m)>{$VMWARE.DVS.CONNECTED.DOWN.MAX}
+          name: 'DVS {#DVS.NAME}: Connected ports with link down above threshold'
+          priority: WARNING
+          description: Present in every available sample during the last five minutes. Adjust the threshold on the
+            vCenter host to match policy.
+          tags:
+          - tag: scope
+            value: availability
+          - tag: dvs.uuid
+            value: '{#DVS.UUID}'
+      - uuid: c619f26055e844bfb0d33d74d700e7e1
+        name: 'DVS {#DVS.NAME}: Blocked ports'
+        type: DEPENDENT
+        key: vmware.dvswitch.blocked["{#DVS.UUID}"]
+        history: 7d
+        trends: 90d
+        description: Ports whose runtimeInfo.blocked is explicitly true. May be intentional configuration.
+        master_item:
+          key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.blocked
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: blocked
+      - uuid: 6ef78cda666b447d9599813c629f9cab
+        name: 'DVS {#DVS.NAME}: Port conflicts'
+        type: DEPENDENT
+        key: vmware.dvswitch.conflicts["{#DVS.UUID}"]
+        history: 7d
+        trends: 90d
+        description: Ports whose conflict flag is explicitly true.
+        master_item:
+          key: vmware.dvswitch.summary["{#DVS.UUID}"]
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.conflicts
+        tags:
+        - tag: component
+          value: network
+        - tag: dvs.uuid
+          value: '{#DVS.UUID}'
+        - tag: dvs.name
+          value: '{#DVS.NAME}'
+        - tag: dvs.metric
+          value: conflicts
+        trigger_prototypes:
+        - uuid: 893a6004830444d4aeabc16287e0c07d
+          expression: min(/VMware Distributed Switches/vmware.dvswitch.conflicts["{#DVS.UUID}"],5m)>{$VMWARE.DVS.CONFLICTS.MAX}
+          name: 'DVS {#DVS.NAME}: Port conflicts above threshold'
+          priority: WARNING
+          description: Present in every available sample during the last five minutes. Adjust the threshold on the
+            vCenter host to match policy.
+          tags:
+          - tag: scope
+            value: availability
+          - tag: dvs.uuid
+            value: '{#DVS.UUID}'
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |-
+          var rows = JSON.parse(value);
+          if (!Array.isArray(rows)) { throw 'Expected distributed-switch discovery array'; }
+          for (var i = 0; i < rows.length; i++) {
+              // Zabbix 7.0.22 emits DVSWITCH; the documentation also lists DVS.
+              var row = rows[i];
+              if (row['{#DVS.UUID}'] === undefined) { row['{#DVS.UUID}'] = row['{#DVSWITCH.UUID}']; }
+              if (row['{#DVS.NAME}'] === undefined) { row['{#DVS.NAME}'] = row['{#DVSWITCH.NAME}']; }
+              if (typeof row['{#DVS.UUID}'] !== 'string' || typeof row['{#DVS.NAME}'] !== 'string') {
+                  throw 'Missing distributed-switch identity';
+              }
+          }
+          return JSON.stringify(rows);
+    macros:
+    - macro: '{$VMWARE.DVS.INTERVAL}'
+      value: 5m
+      description: Port snapshot interval. Fetching every port can be expensive on large switches.
+    - macro: '{$VMWARE.DVS.DISCOVERY.INTERVAL}'
+      value: 1h
+    - macro: '{$VMWARE.DVS.INVENTORY.INTERVAL}'
+      value: 5m
+      description: Refresh interval for the shared VM and hypervisor ID-to-name inventories.
+    - macro: '{$VMWARE.DVS.NAME.MATCHES}'
+      value: .*
+    - macro: '{$VMWARE.DVS.NAME.NOT_MATCHES}'
+      value: CHANGE_IF_NEEDED
+    - macro: '{$VMWARE.DVS.CONFLICTS.MAX}'
+      value: '0'
+    - macro: '{$VMWARE.DVS.CONNECTED.DOWN.MAX}'
+      value: '0'
+    - macro: '{$VMWARE.DVS.NODATA}'
+      value: 15m
+      description: No-data alert window. Keep longer than the port snapshot interval.
+    tags:
+    - tag: class
+      value: software
+    - tag: target
+      value: vmware

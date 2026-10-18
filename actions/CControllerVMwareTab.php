@@ -12,7 +12,7 @@ use Modules\VMwareMonitoring\Includes\VMwareTabRenderer;
 
 class CControllerVMwareTab extends CController {
 	private const TABS = [
-		'overview', 'hypervisors', 'vms', 'datastores', 'clusters', 'alarms'
+		'overview', 'hypervisors', 'vms', 'datastores', 'dvswitches', 'clusters', 'alarms'
 	];
 
 	protected function init(): void {
@@ -59,6 +59,7 @@ class CControllerVMwareTab extends CController {
 				$hostid, $page, $rows_per_page, $search, $sort, $sortorder
 			),
 			'clusters' => VMwareCollector::clusters($hostid),
+			'dvswitches' => VMwareCollector::distributedSwitches($hostid, $page, $rows_per_page, $search),
 			'alarms' => VMwareCollector::alarms($hostid)
 		};
 

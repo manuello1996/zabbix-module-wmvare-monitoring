@@ -13,7 +13,7 @@
 			const sections = nativeItemMenu(options);
 			const action = new URLSearchParams((options.backurl || '').split('?')[1]).get('action');
 			if (!['vmware.monitoring.list', 'vmware.monitoring.view', 'vmware.monitoring.hypervisor',
-					'vmware.monitoring.cluster'].includes(action)) return sections;
+					'vmware.monitoring.cluster', 'vmware.monitoring.dvswitch'].includes(action)) return sections;
 			const allowed = new Set([t('Item'), t('Graph'), t('Values'), t('500 latest values')]);
 			return sections.map(section => ({...section, items: section.items.filter(item =>
 				allowed.has(item.label) && (item.label !== t('Graph') || options.showGraph))}))

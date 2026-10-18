@@ -25,6 +25,7 @@ class VMwareTabRenderer {
 			'vms' => self::vms($data),
 			'datastores' => self::datastores($data),
 			'clusters' => self::clusters($data),
+			'dvswitches' => self::distributedSwitches($data),
 			'alarms' => self::alarms($data),
 			default => new CDiv(_('Unsupported tab.'))
 		};
@@ -246,6 +247,38 @@ class VMwareTabRenderer {
 		}
 
 		return (string) $table;
+	}
+
+	private static function distributedSwitches(array $data): CDiv {
+		if (!$data['enabled']) {
+			return self::section(_('Distributed switches'), [new CDiv(_(
+				'Optional monitoring: import VMware Distributed Switches and link it to this vCenter host alongside VMware.'
+			))]);
+		}
+		$table = (new CTableInfo())->setHeader([
+			_('Switch'), _('UUID'), _('Ports'), _('Connected'), _('Link up'),
+			_('Connected, link down'), _('Blocked'), _('Conflicts'), _('Last collection'), _('Collection')
+		])->setNoDataMessage(_('No distributed switches found. Wait for discovery and the first port samples.'));
+		foreach ($data['rows'] as $row) {
+			$url = (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.dvswitch')
+				->setArgument('hostid', $row['vcenter_hostid'])->setArgument('uuid', $row['uuid']);
+			$cells = [new CLink($row['name'], $url), $row['uuid']];
+			foreach (['ports', 'connected', 'link_up', 'connected_down', 'blocked', 'conflicts'] as $field) {
+				$cells[] = VMwareItemMenu::value($row[$field] ?? '-', $row, $field);
+			}
+			$cells[] = VMwareItemMenu::value(self::clock($row['lastclock']), $row, 'raw');
+			$cells[] = $row['errors']
+				? (new CSpan(_('Collection error')))->addClass(ZBX_STYLE_RED)
+					->setTitle(implode("\n", array_unique($row['errors'])))
+				: ($row['ports'] === null ? _('Awaiting data') : _('Collected'));
+			$table->addRow($cells);
+		}
+		return self::section(_('Distributed switches'), [
+			new CDiv(_('Port states are snapshots. Disconnected ports are not counted as connected links down.')),
+			...array_map(static fn(string $error) => (new CDiv($error))->addClass(ZBX_STYLE_RED),
+				$data['discovery_errors']),
+			self::search(_('Filter switches...'), $data['search']), $table, self::pager($data)
+		]);
 	}
 
 	private static function clusters(array $rows): CDiv {
