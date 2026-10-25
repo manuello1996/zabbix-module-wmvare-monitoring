@@ -19,12 +19,9 @@ $switches_url = (clone $vcenter_url)->setArgument('tab', 'dvswitches');
 $page = (new CHtmlPage())->setTitle(_('VMware distributed switch'))->setWebLayoutMode(CViewHelper::loadLayoutMode());
 $page->addItem((new CDiv(VMwareBreadcrumb::make([
 	new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
-	(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 	new CLink($data['vcenter']['name'], $vcenter_url),
-	(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 	new CLink(_('Distributed switches'), $switches_url),
-	(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
-	(new CSpan($switch['name']))->addClass('vmware-monitoring-breadcrumb-current')->setAttribute('aria-current', 'page')
+	(new CSpan($switch['name']))->setAttribute('aria-current', 'page')
 ])))->addClass('vmware-monitoring-topbar'));
 
 $summary = (new CTableInfo())->setHeader([_('Property'), _('Value')]);
@@ -117,8 +114,7 @@ $note = match ($data['section']) {
 	default => _('Active Zabbix problems scoped to this switch UUID, including acknowledged or suppressed events.')
 };
 $page->addItem((new CDiv([
-	(new CTag('h4', true, $sections[$data['section']]))->addClass('vmware-monitoring-section-title'),
 	new CDiv($note), $data['section'] === 'ports' ? R::portPanel($data) : null,
-	(new CDiv(R::table($data)))->addClass('vmware-monitoring-dvs-table'), $data['paging']
+	(new CDiv(R::table($data)))->addClass('vmware-monitoring-dvs-table')->addClass('vmware-monitoring-table-wrap'), $data['paging']
 ]))->addClass('vmware-monitoring-section'));
 $page->show();

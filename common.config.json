@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "source_directory": "zabbix-module-common",
+  "tokens": {
+    "CSS_PREFIX": "vmware-monitoring",
+    "BORDER": "vmware-monitoring-card-border",
+    "MUTED": "vmware-monitoring-text-muted",
+    "TEXT": "vmware-monitoring-text",
+    "STRONG": "vmware-monitoring-strong",
+    "JS_NAMESPACE": "VMwareCommon",
+    "LOCATION_DATA_PREFIX": "vmware-location",
+    "LOCATION_DEPTH_VAR": "vmware-monitoring-location-depth"
+  }
+}

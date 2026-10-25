@@ -5,7 +5,7 @@
 	"type": "module",
 	"name": "VMware Monitoring",
 	"namespace": "VMwareMonitoring",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"description": "vCenter, hypervisor, virtual machine, datastore, optional distributed switch and issue overview for Zabbix VMware monitoring.",
 	"actions": {
 		"vmware.monitoring.dvswitch": {
@@ -55,6 +55,7 @@
 		}
 	},
 	"assets": {
-		"css": ["blue-theme.css", "dark-theme.css"]
+		"css": ["common.css", "components.css", "blue-theme.css", "dark-theme.css"],
+		"js": ["common.js", "components.js"]
 	}
 }

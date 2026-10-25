@@ -2,6 +2,8 @@
 
 namespace Modules\VMwareMonitoring\Includes;
 
+use Modules\VMwareMonitoring\Includes\Common\RowDetails;
+
 use CDiv;
 use CCol;
 use CLink;
@@ -11,6 +13,8 @@ use CSpan;
 use CTableInfo;
 use CTag;
 use CUrl;
+
+require_once __DIR__.'/common/bootstrap.php';
 
 class VMwareDvswitchRenderer {
 	private static function portDetailsId(string $hostid, string $uuid, array $port): string {
@@ -110,7 +114,7 @@ class VMwareDvswitchRenderer {
 		$table = (new CTableInfo())->setNoDataMessage(_('No matching records in the collected snapshot.'));
 		if ($section === 'ports') {
 			$table->setHeader([_('Port'), _('Port group ID'), _('Attached entity / NIC'), _('Hypervisor'),
-				_('Link'), _('Blocked'), _('Conflict'), _('VLANs / trunk'), _('MAC / peer'), _('Details')]);
+				_('Link'), _('Blocked'), _('Conflict'), _('VLANs / trunk'), _('MAC / peer')]);
 			foreach ($rows as $port) {
 				$details_id = self::portDetailsId($hostid, $uuid, $port);
 				$fields = (new CTableInfo())->setHeader([_('Reported field'), _('Value')]);
@@ -131,11 +135,12 @@ class VMwareDvswitchRenderer {
 						$other !== null ? self::metric($other) : '',
 						$other !== null ? self::counter($port['statistics'][$other]) : '']);
 				}
-				$details = (new CTag('button', true, _('Port details')))->setAttribute('type', 'button')
-					->setAttribute('data-vmware-dvs-port-toggle', $details_id)
-					->setAttribute('aria-controls', $details_id)->setAttribute('aria-expanded', 'false');
+				$details = RowDetails::toggle(_('Port details'), $details_id, false, [
+					'data-vmware-dvs-port-toggle' => $details_id,
+					'aria-label' => _('Port details').': '.$port['key']
+				]);
 				$table->addRow([
-					$port['key'],
+					RowDetails::name(new CSpan($port['key']), $details),
 					$port['group'] === '' ? '-' : new CLink($port['group'], self::url($hostid, $uuid, 'ports', ['portgroup' => $port['group']])),
 					new CDiv([new CDiv(self::reference($port['entity'])), new CDiv($port['nic'].' / '.$port['type'])]),
 					self::reference($port['proxy']),
@@ -145,18 +150,13 @@ class VMwareDvswitchRenderer {
 					self::flag($port['conflict'])->addClass($port['conflict'] === true ? ZBX_STYLE_RED : null),
 					new CDiv([new CDiv(implode(', ', $port['vlans']) ?: '-'),
 						new CDiv([_('Trunk'), ': ', self::flag($port['trunk'])])]),
-					new CDiv([new CDiv($port['mac']), new CDiv($port['peer'])]), $details
+					new CDiv([new CDiv($port['mac']), new CDiv($port['peer'])])
 				]);
-				$panel = new CDiv([
-					(new CDiv([
-						new CDiv([new CTag('h4', true, _('Runtime details')), $runtime]),
-						new CDiv([new CTag('h4', true, _('Port counters')), $counters])
-					]))->addClass('vmware-monitoring-dvs-detail-grid'),
-					(new CTag('details', true, [new CTag('summary', true, _('All reported fields')), $fields]))
-						->addClass('vmware-monitoring-dvs-fields')
-				]);
-				$table->addRow((new CRow([(new CCol($panel))->setColSpan(10)]))->setId($details_id)
-					->setAttribute('hidden', 'hidden')->addClass('vmware-monitoring-dvs-detail-row'));
+				$table->addRow(RowDetails::row($details_id, 9, RowDetails::grid([
+					RowDetails::group(_('Runtime details'), $runtime),
+					RowDetails::group(_('Port counters'), $counters),
+					RowDetails::group(_('All reported fields'), $fields)
+				])));
 			}
 		}
 		elseif ($section === 'portgroups') {

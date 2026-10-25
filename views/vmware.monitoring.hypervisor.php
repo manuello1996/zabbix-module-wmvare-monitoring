@@ -1,9 +1,13 @@
 <?php declare(strict_types = 0);
+use Modules\VMwareMonitoring\Includes\Common\Summary;
+use Modules\VMwareMonitoring\Includes\Common\CapacityBar;
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 use Widgets\Problems\Includes\WidgetProblems;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
@@ -43,12 +47,9 @@ $page->addItem(
 	(new CDiv(
 		VMwareBreadcrumb::make([
 			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			new CLink($data['vcenter']['name'], $vcenter_url),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			new CLink(_('Hypervisors'), $hypervisors_url),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
-			(new CSpan($data['host']['name']))->addClass('vmware-monitoring-breadcrumb-current')
+			(new CSpan($data['host']['name']))
 		])
 	))->addClass('vmware-monitoring-topbar')
 );
@@ -77,14 +78,7 @@ foreach ([
 $page->addItem((new CDiv($tabs))->addClass('vmware-monitoring-tabs')->setAttribute('role', 'tablist'));
 
 $make_stat = static function (string $modifier, string $label, int $value): CDiv {
-	return (new CDiv([
-		(new CDiv($label))->addClass('vmware-monitoring-statseg-label'),
-		(new CDiv(
-			(new CSpan((string) $value))->addClass('vmware-monitoring-card-value')
-		))->addClass('vmware-monitoring-statseg-figure')
-	]))
-		->addClass('vmware-monitoring-statseg')
-		->addClass('vmware-monitoring-card-'.$modifier);
+	return Summary::card($label, (string) $value, ['modifier' => $modifier]);
 };
 
 if ($data['tab'] === 'overview') {
@@ -102,17 +96,13 @@ if ($data['tab'] === 'overview') {
 		: new CSpan('0');
 
 	$page->addItem(
-		(new CDiv([
+		Summary::strip([
 			$make_stat('total', _('Virtual machines'), (int) ($m['vm_count'] ?? 0)),
 			$make_stat('total', _('Datastores'), $data['detail']['datastore_totals']['count']),
-			(new CDiv([
-				(new CDiv(_('Active problems')))->addClass('vmware-monitoring-statseg-label'),
-				(new CDiv((new CSpan($problem_value))->addClass('vmware-monitoring-card-value')))
-					->addClass('vmware-monitoring-statseg-figure')
-			]))->addClass('vmware-monitoring-statseg')
-				->addClass($data['detail']['problem_count'] > 0
-					? 'vmware-monitoring-card-stopped' : 'vmware-monitoring-card-total')
-		]))->addClass('vmware-monitoring-statstrip')
+			Summary::card(_('Active problems'), $problem_value, [
+				'modifier' => $data['detail']['problem_count'] > 0 ? 'stopped' : 'total'
+			])
+		])
 	);
 
 	$information = (new CTableInfo())->setHeader([_('Property'), _('Value')]);
@@ -142,13 +132,9 @@ if ($data['tab'] === 'overview') {
 		if ($value === null) {
 			return '-';
 		}
-		$percent = max(0, min(100, (float) $value));
 		return (new CDiv([
 			I::value(VMwareFormatter::percent($value), $m, $field),
-			(new CDiv((new CDiv())->addClass('vmware-monitoring-progress-fill')
-				->addClass($percent >= 90 ? 'vmware-monitoring-progress-crit' : null)
-				->setAttribute('style', 'width: '.number_format($percent, 2, '.', '').'%')))
-				->addClass('vmware-monitoring-progress')
+			CapacityBar::render($value)
 		]))->addClass('vmware-monitoring-capacity-cell');
 	};
 	$capacity = (new CTableInfo())->setHeader([
@@ -214,7 +200,6 @@ if ($data['tab'] === 'datastores') {
 		]);
 	}
 	$page->addItem((new CDiv([
-		(new CTag('h4', true, _('Hypervisor datastores')))->addClass('vmware-monitoring-section-title'),
 		$datastores
 	]))->addClass('vmware-monitoring-section'));
 	$page->show();
@@ -257,9 +242,8 @@ if ($data['tab'] === 'vms') {
 		$navigation[] = new CLink(_('Next'), $tab_url('vms')->setArgument('page', $vms['page'] + 1));
 	}
 	$page->addItem((new CDiv([
-		(new CTag('h4', true, _('Discovered virtual machines')))->addClass('vmware-monitoring-section-title'),
 		$table,
-		(new CDiv($navigation))->addClass('vmware-monitoring-pager')
+		(new CDiv($navigation))->addClass('vmware-monitoring-view-more')
 	]))->addClass('vmware-monitoring-section'));
 	$page->show();
 	return;
@@ -267,7 +251,6 @@ if ($data['tab'] === 'vms') {
 
 if ($data['tab'] === 'problems') {
 	$page->addItem((new CDiv([
-		(new CTag('h4', true, _('Hypervisor problems')))->addClass('vmware-monitoring-section-title'),
 		(new CDiv(new WidgetProblems($data['problem_widget'])))->addClass('dashboard-widget-problems')
 	]))->addClass('vmware-monitoring-section'));
 	$page->show();
@@ -275,14 +258,14 @@ if ($data['tab'] === 'problems') {
 }
 
 $page->addItem(
-	(new CDiv([
+	Summary::strip([
 		$make_stat('nodes', _('Sensors'), $data['counts']['total']),
 		$make_stat('running', _('Green'), $data['counts']['1']),
 		$make_stat('memory', _('Yellow'), $data['counts']['2']),
 		$make_stat('stopped', _('Red'), $data['counts']['3']),
 		$make_stat('total', _('Gray / no data'), $data['counts']['0']),
 		$make_stat('stopped', _('Unsupported'), $data['counts']['unsupported'])
-	]))->addClass('vmware-monitoring-statstrip')
+	])
 );
 
 $type_options = [];
@@ -429,8 +412,6 @@ foreach ($data['sensors'] as $sensor) {
 $page
 	->addItem(
 		(new CDiv([
-			(new CTag('h4', true, _('Discovered hypervisor sensors')))
-				->addClass('vmware-monitoring-section-title'),
 			$table,
 			$data['paging']
 		]))->addClass('vmware-monitoring-section')

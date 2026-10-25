@@ -3,3 +3,4 @@ template.yml
 /dev/mock-vmware/.demo-state.json
 /dev/mock-vmware/.demo-state.tmp
 __pycache__/
+/dist/

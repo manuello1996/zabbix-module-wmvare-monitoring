@@ -2,6 +2,10 @@
 
 namespace Modules\VMwareMonitoring\Includes;
 
+use Modules\VMwareMonitoring\Includes\Common\LocationHierarchy;
+
+require_once __DIR__.'/common/LocationHierarchy.php';
+
 /** Keep location branches together while sorting their vCenters before pagination. */
 class VMwareVCenterSort {
 	public const FIELDS = ['vcenter', 'health', 'problems', 'version', 'hypervisors', 'vms', 'datastores', 'notes'];
@@ -9,19 +13,8 @@ class VMwareVCenterSort {
 	public static function sort(array &$vcenters, string $field, string $direction): void {
 		$field = in_array($field, self::FIELDS, true) ? $field : 'vcenter';
 		usort($vcenters, static function (array $left, array $right) use ($field, $direction): int {
-			$left_path = $left['location_path'] ?? [];
-			$right_path = $right['location_path'] ?? [];
-			if ((bool) $left_path !== (bool) $right_path) {
-				return $left_path ? -1 : 1;
-			}
-			for ($index = 0, $parts = min(count($left_path), count($right_path)); $index < $parts; $index++) {
-				$comparison = strnatcasecmp($left_path[$index], $right_path[$index])
-					?: strcmp($left_path[$index], $right_path[$index]);
-				if ($comparison !== 0) { return $comparison; }
-			}
-			if (count($left_path) !== count($right_path)) {
-				return count($left_path) <=> count($right_path);
-			}
+			$location = LocationHierarchy::comparePaths($left['location_path'] ?? [], $right['location_path'] ?? []);
+			if ($location !== 0) { return $location; }
 
 			$a = self::value($left, $field);
 			$b = self::value($right, $field);

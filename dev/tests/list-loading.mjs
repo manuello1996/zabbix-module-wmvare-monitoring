@@ -50,7 +50,8 @@ const context = {
 		url: new URL(url), options, resolve: data => resolve({ok: true, json: async () => data}), reject
 	}))
 };
-vm.runInNewContext(source, context);
+vm.runInNewContext((await readFile(new URL('../../assets/js/common.js', import.meta.url), 'utf8')) + '\n'
+	+ (await readFile(new URL('../../assets/js/components.js', import.meta.url), 'utf8')) + '\n' + source, context);
 const app = window.vmware_monitoring_list;
 const settle = async () => {for (let i = 0; i < 12; i++) {await Promise.resolve();}};
 const payload = name => ({content: `${name} table`, summary: `${name} totals`});
@@ -76,7 +77,7 @@ assert.equal(summary.innerHTML, 'vcenters totals');
 assert.equal(content.attributes['aria-busy'], 'false');
 assert.equal(requests.length, 1, 'Inactive tabs are not prefetched');
 assert.equal(autoRefresh.checked, false);
-assert.equal(app.refresh, 0, 'General user refresh preferences do not enable polling');
+assert.equal(app.autoRefresh.enabled, false, 'General user refresh preferences do not enable polling');
 assert.equal(timers.size, 0, 'There is no automatic refresh timer by default');
 assert.match(status.textContent, /^Updated at /);
 assert.equal(status.textContent.includes('Auto-refresh enabled'), false);

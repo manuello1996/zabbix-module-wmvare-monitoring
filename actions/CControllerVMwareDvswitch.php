@@ -6,12 +6,14 @@ use API;
 use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
-use CPagerHelper;
+use Modules\VMwareMonitoring\Includes\Common\Pager as CPagerHelper;
 use CRoleHelper;
 use CUrl;
 use CWebUser;
 use Modules\VMwareMonitoring\Includes\VMwareCollector;
 use Modules\VMwareMonitoring\Includes\VMwareDvswitch;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 class CControllerVMwareDvswitch extends CController {
 	private array $vcenter = [];

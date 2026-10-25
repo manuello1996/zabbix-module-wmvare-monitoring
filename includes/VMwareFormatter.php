@@ -2,18 +2,16 @@
 
 namespace Modules\VMwareMonitoring\Includes;
 
+use Modules\VMwareMonitoring\Includes\Common\Formatting;
+
+require_once __DIR__.'/common/Formatting.php';
+
 class VMwareFormatter {
 	public static function bytes($value, int $decimals = 1): string {
 		if ($value === null || $value === '') {
 			return '-';
 		}
-
-		$bytes = max(0, (float) $value);
-		$units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-		$power = $bytes > 0 ? min((int) floor(log($bytes, 1024)), count($units) - 1) : 0;
-		$number = $bytes / (1024 ** $power);
-
-		return number_format($number, $power === 0 ? 0 : $decimals).' '.$units[$power];
+		return Formatting::bytes($value, $decimals);
 	}
 
 	public static function percent($value, int $decimals = 1): string {
@@ -39,20 +37,7 @@ class VMwareFormatter {
 		if ($seconds === null || $seconds === '') {
 			return '-';
 		}
-
-		$seconds = max(0, (int) $seconds);
-		$days = intdiv($seconds, 86400);
-		$hours = intdiv($seconds % 86400, 3600);
-		$minutes = intdiv($seconds % 3600, 60);
-
-		if ($days > 0) {
-			return $days.'d '.$hours.'h';
-		}
-		if ($hours > 0) {
-			return $hours.'h '.$minutes.'m';
-		}
-
-		return $minutes.'m';
+		return Formatting::duration($seconds);
 	}
 
 	public static function sensorReading(?array $reading): string {

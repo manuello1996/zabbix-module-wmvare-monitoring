@@ -1,0 +1,104 @@
+/* Complete component presentation, generated independently for each module. */
+:root {
+	--vmware-monitoring-ui-bg: #fff;
+	--vmware-monitoring-ui-border: #e0e4e9;
+	--vmware-monitoring-ui-text: #1f2c33;
+	--vmware-monitoring-ui-muted: #647580;
+	--vmware-monitoring-ui-accent: #0275b8;
+	--vmware-monitoring-ui-surface: #f4f6f8;
+	--vmware-monitoring-ui-good: #2f9e44;
+	--vmware-monitoring-ui-critical: #e03131;
+	--vmware-monitoring-ui-warning: #e8873a;
+}
+html[theme="dark-theme"], html[theme="hc-dark"] {
+	--vmware-monitoring-ui-bg: #2b2b2b;
+	--vmware-monitoring-ui-border: #454545;
+	--vmware-monitoring-ui-text: #f2f2f2;
+	--vmware-monitoring-ui-muted: #b4b4b4;
+	--vmware-monitoring-ui-accent: #73b6e0;
+	--vmware-monitoring-ui-surface: #333;
+	--vmware-monitoring-ui-good: #60cd89;
+	--vmware-monitoring-ui-critical: #ff6b6b;
+	--vmware-monitoring-ui-warning: #f3b765;
+}
+
+.vmware-monitoring-statstrip { display: flex; flex-wrap: wrap; margin: 0 0 14px; background: var(--vmware-monitoring-ui-bg); border: 1px solid var(--vmware-monitoring-ui-border); border-radius: 10px; }
+.vmware-monitoring-statseg { flex: 1 1 130px; min-width: 100px; padding: 10px 18px 12px; }
+.vmware-monitoring-statseg + .vmware-monitoring-statseg { border-left: 1px solid var(--vmware-monitoring-ui-border); }
+.vmware-monitoring-statseg-label { margin-bottom: 5px; font-size: 10px; font-weight: bold; letter-spacing: .09em; text-transform: uppercase; color: var(--vmware-monitoring-ui-muted); }
+.vmware-monitoring-statseg-figure { display: flex; align-items: baseline; gap: 6px; min-height: 22px; }
+.vmware-monitoring-statseg .vmware-monitoring-card-value { font-size: 19px; font-weight: bold; font-variant-numeric: tabular-nums; line-height: 1.3; color: var(--vmware-monitoring-ui-text); }
+.vmware-monitoring-card-value a { color: inherit; }
+.vmware-monitoring-card-unit { font-size: 11px; color: var(--vmware-monitoring-ui-muted); }
+.vmware-monitoring-statseg-aside { margin-left: auto; align-self: center; min-width: 55px; }
+.vmware-monitoring-statseg-aside .vmware-monitoring-progress { width: 65px; }
+.vmware-monitoring-card-running .vmware-monitoring-card-value,
+.vmware-monitoring-card-healthy .vmware-monitoring-card-value { color: var(--vmware-monitoring-ui-good); }
+.vmware-monitoring-card-stopped .vmware-monitoring-card-value,
+.vmware-monitoring-card-unhealthy .vmware-monitoring-card-value { color: var(--vmware-monitoring-ui-critical); }
+
+.vmware-monitoring-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; min-height: 22px; margin: 0; padding: 0; font-size: 13px; line-height: 22px; color: var(--vmware-monitoring-ui-text); }
+.vmware-monitoring-breadcrumb a { color: var(--vmware-monitoring-ui-muted); }
+.vmware-monitoring-breadcrumb a:hover { color: var(--vmware-monitoring-ui-accent); text-decoration: underline; }
+.vmware-monitoring-breadcrumb a:focus-visible { outline: 2px solid var(--vmware-monitoring-ui-accent); outline-offset: 2px; }
+.vmware-monitoring-breadcrumb-sep { margin: 0 8px; color: var(--vmware-monitoring-ui-muted); }
+.vmware-monitoring-breadcrumb-current { font-weight: bold; }
+
+.vmware-monitoring-progress { height: 6px; border-radius: 3px; overflow: hidden; background: var(--vmware-monitoring-ui-surface); }
+.vmware-monitoring-progress > .vmware-monitoring-progress-fill { height: 100%; border-radius: inherit; background: var(--vmware-monitoring-ui-good); transition: width .4s ease; }
+.vmware-monitoring-progress[data-tone="warning"] > .vmware-monitoring-progress-fill { background: var(--vmware-monitoring-ui-warning); }
+.vmware-monitoring-progress[data-tone="critical"] > .vmware-monitoring-progress-fill { background: var(--vmware-monitoring-ui-critical); }
+.vmware-monitoring-progress[data-tone="stale"] > .vmware-monitoring-progress-fill { background: var(--vmware-monitoring-ui-muted); }
+
+.vmware-monitoring-sort { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.vmware-monitoring-sort:focus-visible { outline: 2px solid var(--vmware-monitoring-ui-accent); outline-offset: 2px; }
+.vmware-monitoring-sort-arrow { display: inline-block; margin-left: 3px; }
+
+.vmware-monitoring-sparkline { flex: 0 0 auto; width: 90px; height: 24px; }
+.vmware-monitoring-spark-svg { display: block; width: 100%; height: 100%; }
+.vmware-monitoring-spark-line { fill: none; stroke: var(--vmware-monitoring-ui-good); stroke-width: 1.5; stroke-linejoin: round; }
+.vmware-monitoring-spark-fill { fill: var(--vmware-monitoring-ui-good); opacity: .12; }
+.vmware-monitoring-spark-flat { stroke: var(--vmware-monitoring-ui-muted); stroke-width: 1; }
+.vmware-monitoring-spark-point { fill: var(--vmware-monitoring-ui-good); }
+.vmware-monitoring-spark-restarting .vmware-monitoring-spark-line { stroke: var(--vmware-monitoring-ui-warning); }
+.vmware-monitoring-spark-restarting .vmware-monitoring-spark-fill { fill: var(--vmware-monitoring-ui-warning); }
+
+.vmware-monitoring-pager { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.vmware-monitoring-pager-info { color: var(--vmware-monitoring-ui-muted); font-size: 11px; white-space: nowrap; }
+.vmware-monitoring-pager-btn { padding: 2px 8px; height: 24px; border: 1px solid var(--vmware-monitoring-ui-border); border-radius: 3px; background: var(--vmware-monitoring-ui-bg); color: var(--vmware-monitoring-ui-text); }
+.vmware-monitoring-pager-btn:disabled { opacity: .5; cursor: default; }
+.vmware-monitoring-pager-btn:not(:disabled):hover { border-color: var(--vmware-monitoring-ui-accent); }
+.vmware-monitoring-pager-btn:focus-visible { outline: 2px solid var(--vmware-monitoring-ui-accent); outline-offset: 2px; }
+
+/* VMware's opt-in refresh control and status. */
+.vmware-monitoring-auto-refresh { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; }
+.vmware-monitoring-refresh-status { margin-left: 8px; font-size: .85em; font-weight: normal; color: var(--vmware-monitoring-ui-muted); }
+
+/* NetApp is the shared standard for expandable table details. */
+.vmware-monitoring-table-wrap { overflow-x: auto; }
+.vmware-monitoring-table-wrap > table > tbody > .vmware-monitoring-metrics-row > td { padding: 0; background: var(--vmware-monitoring-ui-surface); }
+.vmware-monitoring-resource-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; }
+.vmware-monitoring-metrics-toggle { border: 0; background: transparent; box-shadow: none; padding: 0; height: auto; line-height: inherit; color: var(--vmware-monitoring-ui-accent); white-space: nowrap; cursor: pointer; }
+.vmware-monitoring-metrics-toggle::before { content: '▸'; display: inline-block; margin-right: 5px; }
+.vmware-monitoring-metrics-toggle[aria-expanded="true"]::before { content: '▾'; }
+.vmware-monitoring-metrics-toggle:hover { background: transparent; color: var(--vmware-monitoring-ui-accent); text-decoration: underline; }
+.vmware-monitoring-metrics-toggle:focus-visible { outline: 2px solid var(--vmware-monitoring-ui-accent); outline-offset: 4px; }
+.vmware-monitoring-metrics-row[hidden] { display: none; }
+.vmware-monitoring-table-wrap > table > tbody > .vmware-monitoring-resource-expanded > td { background: var(--vmware-monitoring-ui-surface); border-bottom: 0; }
+.vmware-monitoring-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; background: var(--vmware-monitoring-ui-surface); }
+.vmware-monitoring-metric-group { min-width: 0; background: var(--vmware-monitoring-ui-bg); border: 1px solid var(--vmware-monitoring-ui-border); border-radius: 6px; overflow: hidden; }
+.vmware-monitoring-metric-group:only-child { grid-column: 1 / -1; }
+.vmware-monitoring-metric-group h5 { margin: 0; padding: 12px; border-bottom: 1px solid var(--vmware-monitoring-ui-border); font-size: 12px; }
+.vmware-monitoring-metric-group > table { width: 100%; table-layout: fixed; margin: 0; }
+.vmware-monitoring-metric-group > table td, .vmware-monitoring-metric-group > table th { padding: 8px; white-space: normal; overflow-wrap: anywhere; }
+.vmware-monitoring-metric-group:not([data-module-detail-records]) > table th:first-child { width: 38%; }
+.vmware-monitoring-metric-group:not([data-module-detail-records]) > table th:last-child { width: 13%; }
+@media (max-width: 1100px) {
+	.vmware-monitoring-metric-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+	.vmware-monitoring-statseg { flex-basis: 100px; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.vmware-monitoring-progress > .vmware-monitoring-progress-fill { transition: none; }
+}

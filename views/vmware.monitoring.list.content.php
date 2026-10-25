@@ -1,31 +1,17 @@
 <?php declare(strict_types = 0);
+use Modules\VMwareMonitoring\Includes\Common\ProblemBadges;
+use Modules\VMwareMonitoring\Includes\Common\SortableHeader;
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareLocationGroups;
+use Modules\VMwareMonitoring\Includes\Common\LocationRows;
 use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 use Widgets\Problems\Includes\WidgetProblems;
 
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
+
 $problemBadge = static function (array $severities, array $hostids) {
-	if (!$severities) {
-		return (new CSpan(_('None')))->addClass(ZBX_STYLE_GREEN);
-	}
-
-	$content = [];
-	krsort($severities);
-	foreach ($severities as $severity => $count) {
-		$content[] = (new CSpan((string) $count))
-			->addClass(ZBX_STYLE_PROBLEM_ICON_LIST_ITEM)
-			->addClass(CSeverityHelper::getStatusStyle((int) $severity))
-			->setTitle(CSeverityHelper::getName((int) $severity));
-	}
-
-	return (new CLink(
-		(new CDiv($content))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST),
-		(new CUrl('zabbix.php'))
-			->setArgument('action', 'problem.view')
-			->setArgument('hostids', $hostids)
-			->setArgument('filter_set', 1)
-	))->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
+	return ProblemBadges::link($severities, $hostids);
 };
 
 $tab_url = static function (string $sort, string $sortorder) use ($data): CUrl {
@@ -36,17 +22,11 @@ $tab_url = static function (string $sort, string $sortorder) use ($data): CUrl {
 		->setArgument('sortorder', $sortorder);
 };
 $sort_header = static function (string $label, string $field) use ($data, $tab_url): CLink {
-	$active = ($data['sort'] ?? 'vcenter') === $field;
-	$order = $active && ($data['sortorder'] ?? ZBX_SORT_UP) === ZBX_SORT_UP ? ZBX_SORT_DOWN : ZBX_SORT_UP;
-	$arrow = new CSpan();
-	if ($active) {
-		$arrow->addClass(($data['sortorder'] ?? ZBX_SORT_UP) === ZBX_SORT_UP ? 'arrow-up' : 'arrow-down');
-	}
-
-	return (new CLink([$label, $arrow->addClass('vmware-monitoring-sort-arrow')], $tab_url($field, $order)))
-		->addClass('vmware-monitoring-sort');
+	$field_sort = $data['sort'] ?? 'vcenter';
+	$order = $data['sortorder'] ?? ZBX_SORT_UP;
+	$next = $field_sort === $field && $order === ZBX_SORT_UP ? ZBX_SORT_DOWN : ZBX_SORT_UP;
+	return SortableHeader::render($label, $field, $field_sort, $order, ['url' => $tab_url($field, $next)]);
 };
-
 
 if ($data['tab'] === 'problems') {
 	$problem_content = [
@@ -60,7 +40,7 @@ if ($data['tab'] === 'problems') {
 				(new CUrl('zabbix.php'))
 					->setArgument('action', 'problem.view')
 			)
-		))->addClass('vmware-monitoring-pager');
+		))->addClass('vmware-monitoring-view-more');
 	}
 	(new CDiv($problem_content))->addClass('vmware-monitoring-section')->show();
 	return;
@@ -105,7 +85,7 @@ if ($data['tab'] === 'issues') {
 				_('View all problems'),
 				(new CUrl('zabbix.php'))->setArgument('action', 'problem.view')
 			)
-		))->addClass('vmware-monitoring-pager');
+		))->addClass('vmware-monitoring-view-more');
 	}
 
 	(new CDiv($issue_content))->addClass('vmware-monitoring-section')->show();
@@ -126,57 +106,17 @@ $table = (new CTableInfo())
 	])
 	->setNoDataMessage(_('No vCenter hosts found. Link the official "VMware" template to a monitored host.'));
 
-$previous_location_path = [];
+$headers = VMwareLocationGroups::headers($data['vcenters']);
 foreach ($data['vcenters'] as $vcenter) {
 	$location_path = $vcenter['location_path'] ?? [];
-	if ($location_path) {
-		$common_parts = 0;
-		$maximum_common_parts = min(count($previous_location_path), count($location_path));
-		while ($common_parts < $maximum_common_parts
-				&& $previous_location_path[$common_parts] === $location_path[$common_parts]) {
-			$common_parts++;
-		}
-
-		for ($depth = $common_parts; $depth < count($location_path); $depth++) {
-			$key = VMwareLocationGroups::key(array_slice($location_path, 0, $depth + 1));
-			$group = $data['location_groups'][$key];
-			$ancestors = [];
-			for ($ancestor = 1; $ancestor <= $depth; $ancestor++) {
-				$ancestors[] = VMwareLocationGroups::key(array_slice($location_path, 0, $ancestor));
-			}
-			$location_group = (new CDiv([
-				(new CButton(null, [
-					(new CSpan())->addClass('vmware-monitoring-location-chevron')->setAttribute('aria-hidden', 'true'),
-					(new CSpan($location_path[$depth]))->addClass('vmware-monitoring-location-name')
-				]))
-					->addClass('vmware-monitoring-location-toggle')
-					->setAttribute('data-vmware-location-toggle', $key)
-					->setAttribute('aria-expanded', $group['collapsed'] ? 'false' : 'true'),
-				(new CSpan(sprintf(_('%1$s vCenters'), $group['vcenters'])))
-					->addClass('vmware-monitoring-location-count')
-			]))
-				->addClass('vmware-monitoring-location-group')
-				->setAttribute('style', '--vmware-monitoring-location-depth: '.$depth);
-			$group_row = (new CRow([
-				(new CCol($location_group))->setColSpan(2),
-				$problemBadge($group['problems'], $group['problem_hostids']),
-				'', (string) $group['hypervisors'], (string) $group['vms'], (string) $group['datastores'], ''
-			]))
-				->addClass('vmware-monitoring-location-row')
-				->setAttribute('data-vmware-location-key', $key)
-				->setAttribute('data-vmware-location-ancestors', json_encode($ancestors));
-			foreach ($ancestors as $ancestor_key) {
-				if ($data['location_groups'][$ancestor_key]['collapsed']) {
-					$group_row->setAttribute('hidden', 'hidden');
-					break;
-				}
-			}
-			$table->addRow($group_row);
-		}
-		$previous_location_path = $location_path;
-	}
-	else {
-		$previous_location_path = [];
+	$branches = VMwareLocationGroups::branches($location_path);
+	foreach ($headers[(string) $vcenter['hostid']] ?? [] as $key) {
+		$group = $data['location_groups'][$key];
+		$table->addRow(LocationRows::header($group + $branches[$key],
+			sprintf(_('%1$s vCenters'), $group['vcenters']), [
+				$problemBadge($group['problems'], $group['problem_hostids']), '',
+				(string) $group['hypervisors'], (string) $group['vms'], (string) $group['datastores'], ''
+			], 2, $data['location_groups']));
 	}
 
 	$url = (new CUrl('zabbix.php'))
@@ -209,18 +149,8 @@ foreach ($data['vcenters'] as $vcenter) {
 		(string) $vcenter['datastores'],
 		$vcenter['inventory']['notes'] ?? ''
 	]);
-	$ancestors = [];
-	for ($depth = 1; $depth <= count($location_path); $depth++) {
-		$ancestors[] = VMwareLocationGroups::key(array_slice($location_path, 0, $depth));
-	}
-	$vcenter_row->setAttribute('data-vmware-location-ancestors', json_encode($ancestors));
-	foreach ($ancestors as $key) {
-		if ($data['location_groups'][$key]['collapsed']) {
-			$vcenter_row->setAttribute('hidden', 'hidden');
-			break;
-		}
-	}
-	$table->addRow($vcenter_row);
+	$table->addRow(LocationRows::withAncestors($vcenter_row,
+		VMwareLocationGroups::ancestorKeys($location_path), $data['location_groups']));
 }
 
 (new CDiv([

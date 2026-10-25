@@ -2,7 +2,14 @@
 
 namespace Modules\VMwareMonitoring\Includes;
 
-use CCol;
+use Modules\VMwareMonitoring\Includes\Common\RowDetails;
+use Modules\VMwareMonitoring\Includes\Common\ProblemBadges;
+use Modules\VMwareMonitoring\Includes\Common\SortableHeader;
+use Modules\VMwareMonitoring\Includes\Common\Sparkline;
+use Modules\VMwareMonitoring\Includes\Common\Pager;
+
+use Modules\VMwareMonitoring\Includes\Common\SearchControl;
+
 use CDiv;
 use CLink;
 use CLinkAction;
@@ -10,13 +17,13 @@ use CMenuPopupHelper;
 use CRow;
 use CSpan;
 use CTableInfo;
-use CTag;
 use CUrl;
 use CSeverityHelper;
 use Widgets\Problems\Includes\WidgetProblems;
 
+require_once __DIR__.'/common/bootstrap.php';
+
 class VMwareTabRenderer {
-	private const PAGER_RANGE = 11;
 
 	public static function render(string $tab, array $data): string {
 		$content = match ($tab) {
@@ -51,8 +58,8 @@ class VMwareTabRenderer {
 		$table->addRow([_('Datastore attachments'), (string) $data['datastore_attachments_count']]);
 
 		return new CDiv([
-			self::section(_('vCenter overview'), [$table]),
-			self::section(_('Problems'), [
+			self::section([$table]),
+			self::section([
 				(new CDiv(new WidgetProblems($data['problem_widget'])))
 					->addClass('dashboard-widget-problems')
 			])
@@ -105,7 +112,7 @@ class VMwareTabRenderer {
 				VMwareItemMenu::value($m['version'] ?: '-', $m, 'version')
 			]);
 		}
-		return self::section(_('Discovered hypervisors'), [
+		return self::section([
 			self::search(_('Filter by hypervisor or cluster...'), $data['search'] ?? ''),
 			$table,
 			self::pager($data)
@@ -156,7 +163,7 @@ class VMwareTabRenderer {
 			]);
 		}
 
-		return self::section(_('Discovered virtual machines'), [
+		return self::section([
 			self::search(_('Filter virtual machines...'), $data['search'] ?? ''),
 			$table,
 			self::pager($data)
@@ -184,74 +191,54 @@ class VMwareTabRenderer {
 				->setArgument('identity', $row['identity'])
 				->getUrl();
 
-			$unique_table->addRow(
-				(new CRow([
-					(new CSpan($row['name']))->addClass('vmware-monitoring-name'),
-					$row['type'] ?: '-',
-					$row['uuid'] ?: '-',
-					VMwareItemMenu::value(VMwareFormatter::bytes($row['total']), $row, 'total'),
-					VMwareItemMenu::value(VMwareFormatter::percent($row['free_pct']), $row, 'free_pct'),
-					self::hypervisorList($row['hypervisors']),
-					(string) $row['attachments']
-				]))
-					->addClass('vmware-monitoring-datastore-summary')
-					->setAttribute('role', 'button')
-					->setAttribute('tabindex', '0')
-					->setAttribute('aria-controls', $details_id)
-					->setAttribute('aria-expanded', 'false')
-					->setAttribute('data-vmware-monitoring-datastore-toggle', $details_id)
-					->setTitle(_('Show attachment details'))
-			);
-			$unique_table->addRow(
-				(new CRow([
-					(new CCol(
-						(new CDiv(_('Expand to load attachment metrics.')))
-							->setId($details_content_id)
-							->addClass('vmware-monitoring-muted')
-					))->setColSpan(7)
-				]))
-					->setId($details_id)
-					->setAttribute('hidden', 'hidden')
-					->setAttribute('data-vmware-monitoring-datastore-url', $details_url)
-					->setAttribute('data-vmware-monitoring-datastore-content', $details_content_id)
-					->addClass('vmware-monitoring-datastore-details')
-			);
+			$toggle = RowDetails::toggle(_('Attachments').' ('.$row['attachments'].')', $details_id, false, [
+				'data-vmware-monitoring-datastore-toggle' => $details_id,
+				'aria-label' => _('Attachment metrics').': '.$row['name']
+			]);
+			$unique_table->addRow(new CRow([
+				RowDetails::name((new CSpan($row['name']))->addClass('vmware-monitoring-name'), $toggle),
+				$row['type'] ?: '-', $row['uuid'] ?: '-',
+				VMwareItemMenu::value(VMwareFormatter::bytes($row['total']), $row, 'total'),
+				VMwareItemMenu::value(VMwareFormatter::percent($row['free_pct']), $row, 'free_pct'),
+				self::hypervisorList($row['hypervisors']), (string) $row['attachments']
+			]));
+			$unique_table->addRow(RowDetails::row($details_id, 7,
+				(new CDiv(_('Expand to load attachment metrics.')))->setId($details_content_id), false, [
+					'data-vmware-monitoring-datastore-url' => $details_url,
+					'data-vmware-monitoring-datastore-content' => $details_content_id
+				]));
 		}
 
-		return self::section(_('Unique datastores'), [
+		return self::section([
 			self::search(_('Filter datastores...'), $data['search'] ?? ''),
-			$unique_table,
+			RowDetails::table($unique_table),
 			self::pager($data['unique'])
 		]);
 	}
 
 	public static function renderDatastoreAttachments(array $attachments): string {
-		$table = (new CTableInfo())
-			->setHeader([
-				_('Hypervisor'), _('Type'), _('Capacity'), _('Free'),
-				_('Read / write latency'), _('Read / write IOPS'), _('Multipaths')
-			])
-			->setNoDataMessage(_('No datastore attachments found.'));
+		$groups = [];
 		foreach ($attachments as $attachment) {
-			$table->addRow([
-				$attachment['hypervisor'] ?: '-',
-				$attachment['type'] ?: '-',
-				VMwareItemMenu::value(VMwareFormatter::bytes($attachment['total']), $attachment, 'total'),
-				VMwareItemMenu::value(VMwareFormatter::percent($attachment['free_pct']), $attachment, 'free_pct'),
-				new CSpan([VMwareItemMenu::value($attachment['read_latency'] ?? '-', $attachment, 'read_latency'), ' / ',
-					VMwareItemMenu::value($attachment['write_latency'] ?? '-', $attachment, 'write_latency'), ' ms']),
-				new CSpan([VMwareItemMenu::value($attachment['read_iops'] ?? '-', $attachment, 'read_iops'), ' / ',
-					VMwareItemMenu::value($attachment['write_iops'] ?? '-', $attachment, 'write_iops')]),
-				VMwareItemMenu::value($attachment['multipath'] ?? '-', $attachment, 'multipath')
-			]);
+			$table = (new CTableInfo())->setHeader([_('Metric'), _('Latest value')]);
+			$table->addRow([_('Type'), $attachment['type'] ?: '-']);
+			$table->addRow([_('Capacity'), VMwareItemMenu::value(VMwareFormatter::bytes($attachment['total']), $attachment, 'total')]);
+			$table->addRow([_('Free'), VMwareItemMenu::value(VMwareFormatter::percent($attachment['free_pct']), $attachment, 'free_pct')]);
+			foreach (['read_latency' => _('Read latency'), 'write_latency' => _('Write latency'),
+				'read_iops' => _('Read IOPS'), 'write_iops' => _('Write IOPS'), 'multipath' => _('Multipaths')] as $key => $label) {
+				$value = VMwareItemMenu::value($attachment[$key] ?? '-', $attachment, $key);
+				$table->addRow([$label, str_ends_with($key, '_latency') ? new CSpan([$value, ' ms']) : $value]);
+			}
+			$groups[] = RowDetails::group(_('Hypervisor').': '.($attachment['hypervisor'] ?: '-'), $table);
 		}
-
-		return (string) $table;
+		if (!$groups) {
+			$groups[] = RowDetails::group(_('Attachments'), (new CTableInfo())->setNoDataMessage(_('No datastore attachments found.')));
+		}
+		return (string) RowDetails::grid($groups);
 	}
 
 	private static function distributedSwitches(array $data): CDiv {
 		if (!$data['enabled']) {
-			return self::section(_('Distributed switches'), [new CDiv(_(
+			return self::section([new CDiv(_(
 				'Optional monitoring: import VMware Distributed Switches and link it to this vCenter host alongside VMware.'
 			))]);
 		}
@@ -273,7 +260,7 @@ class VMwareTabRenderer {
 				: ($row['ports'] === null ? _('Awaiting data') : _('Collected'));
 			$table->addRow($cells);
 		}
-		return self::section(_('Distributed switches'), [
+		return self::section([
 			new CDiv(_('Port states are snapshots. Disconnected ports are not counted as connected links down.')),
 			...array_map(static fn(string $error) => (new CDiv($error))->addClass(ZBX_STYLE_RED),
 				$data['discovery_errors']),
@@ -309,7 +296,7 @@ class VMwareTabRenderer {
 				VMwareFormatter::bytes($row['memory_total'])
 			]);
 		}
-		return self::section(_('Clusters and standalone resources'), [$table]);
+		return self::section([$table]);
 	}
 
 	private static function alarms(array $rows): CDiv {
@@ -328,14 +315,11 @@ class VMwareTabRenderer {
 				self::clock($row['lastclock'])
 			]);
 		}
-		return self::section(_('Active vCenter issues'), [$table]);
+		return self::section([$table]);
 	}
 
-	private static function section(string $title, array $content): CDiv {
-		return (new CDiv([
-			(new CTag('h4', true, $title))->addClass('vmware-monitoring-section-title'),
-			...$content
-		]))->addClass('vmware-monitoring-section');
+	private static function section(array $content): CDiv {
+		return (new CDiv($content))->addClass('vmware-monitoring-section');
 	}
 
 	private static function state(array $state): CSpan {
@@ -400,137 +384,24 @@ class VMwareTabRenderer {
 	}
 
 	private static function sparkline(?string $itemid): CDiv {
-		$div = (new CDiv())->addClass('vmware-monitoring-sparkline');
-		if ($itemid !== null) {
-			$div->setAttribute('data-vmware-monitoring-spark-itemid', $itemid);
-		}
-		return $div;
+		return Sparkline::holder($itemid !== null ? ['data-vmware-monitoring-spark-itemid' => $itemid] : []);
 	}
 
 	public static function problemBadge(array $severities, string $hostid) {
-		if (!$severities) {
-			return (new CSpan(_('None')))->addClass(ZBX_STYLE_GREEN);
-		}
-		$items = [];
-		foreach ($severities as $severity => $count) {
-			$items[] = (new CSpan((string) $count))
-				->addClass(ZBX_STYLE_PROBLEM_ICON_LIST_ITEM)
-				->addClass(CSeverityHelper::getStatusStyle((int) $severity))
-				->setTitle(CSeverityHelper::getName((int) $severity));
-		}
-		return (new CLink(
-			(new CDiv($items))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST),
-			(new CUrl('zabbix.php'))
-				->setArgument('action', 'problem.view')
-				->setArgument('hostids', [$hostid])
-				->setArgument('filter_set', 1)
-		))->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
+		return ProblemBadges::link($severities, [$hostid]);
 	}
 
-	private static function search(string $placeholder, string $value): CTag {
-		return (new CTag('input', false))
-			->setAttribute('type', 'search')
-			->setAttribute('value', $value)
-			->setAttribute('placeholder', $placeholder)
-			->setAttribute('data-vmware-monitoring-server-search', '1')
-			->addClass('vmware-monitoring-search');
+	private static function search(string $placeholder, string $value): CDiv {
+		return SearchControl::bar($placeholder, $value, ['data-vmware-monitoring-server-search' => '1']);
 	}
 
 	private static function sortHeader(string $label, string $field, array $data): CSpan {
-		$active = ($data['sort'] ?? 'name') === $field;
-		$arrow = new CSpan();
-		if ($active) {
-			$arrow->addItem(
-				(new CSpan())->addClass(
-					($data['sortorder'] ?? ZBX_SORT_UP) === ZBX_SORT_UP ? 'arrow-up' : 'arrow-down'
-				)
-			);
-		}
-
-		return (new CSpan([
-			$label,
-			$arrow->addClass('vmware-monitoring-sort-arrow')
-		]))
-			->addClass('vmware-monitoring-sort')
-			->setAttribute('data-vmware-monitoring-sort', $field)
-			->setAttribute('role', 'button')
-			->setAttribute('tabindex', '0');
+		return SortableHeader::render($label, $field, $data['sort'] ?? 'name', $data['sortorder'] ?? ZBX_SORT_UP,
+			['attribute' => 'data-vmware-monitoring-sort']);
 	}
 
 	private static function pager(array $data): CDiv {
-		$page = (int) $data['page'];
-		$pages = (int) $data['pages'];
-		$total = (int) $data['total'];
-		$per_page = (int) $data['per_page'];
-		$start = ($page - 1) * $per_page;
-		$end = min($total, $start + $per_page);
-		$links = [];
-
-		if ($pages > 1) {
-			$end_page = min($pages, max(self::PAGER_RANGE, $page + intdiv(self::PAGER_RANGE, 2)));
-			$start_page = max(1, $end_page - self::PAGER_RANGE + 1);
-
-			if ($start_page > 1) {
-				$links[] = self::pageLink(_x('First', 'page navigation'), 1, _('Go to first page'));
-			}
-			if ($page > 1) {
-				$links[] = self::pageLink(
-					(new CSpan())->addClass(ZBX_STYLE_ARROW_LEFT),
-					$page - 1,
-					_s('Go to previous page, %1$s', $page - 1)
-				);
-			}
-			for ($number = $start_page; $number <= $end_page; $number++) {
-				$link = self::pageLink(
-					(string) $number,
-					$number,
-					$number === $page
-						? _s('Go to page %1$s, current page', $number)
-						: _s('Go to page %1$s', $number)
-				);
-				if ($number === $page) {
-					$link
-						->addClass(ZBX_STYLE_PAGING_SELECTED)
-						->setAttribute('aria-current', 'true');
-				}
-				$links[] = $link;
-			}
-			if ($page < $pages) {
-				$links[] = self::pageLink(
-					(new CSpan())->addClass(ZBX_STYLE_ARROW_RIGHT),
-					$page + 1,
-					_s('Go to next page, %1$s', $page + 1)
-				);
-			}
-			if ($end_page < $pages) {
-				$links[] = self::pageLink(_x('Last', 'page navigation'), $pages,
-					_s('Go to last page, %1$s', $pages)
-				);
-			}
-		}
-
-		$stats = $pages === 1
-			? _s('Displaying %1$s of %2$s found', $total, $total)
-			: _s('Displaying %1$s to %2$s of %3$s found', $start + 1, $end, $total);
-
-		return (new CDiv())
-			->addClass(ZBX_STYLE_TABLE_PAGING)
-			->addItem(
-				(new CTag('nav', true))
-					->addClass(ZBX_STYLE_PAGING_BTN_CONTAINER)
-					->setAttribute('role', 'navigation')
-					->setAttribute('aria-label', _x('Pager', 'page navigation'))
-					->addItem($links)
-					->addItem(
-						(new CDiv($stats))->addClass(ZBX_STYLE_TABLE_STATS)
-					)
-			);
-	}
-
-	private static function pageLink($content, int $page, string $label): CLink {
-		return (new CLink($content, '#'))
-			->setAttribute('data-vmware-monitoring-page', (string) $page)
-			->setAttribute('aria-label', $label);
+		return Pager::ajax($data, 'data-vmware-monitoring-page');
 	}
 
 	private static function clock($clock): string {

@@ -6,7 +6,7 @@ use API;
 use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
-use CPagerHelper;
+use Modules\VMwareMonitoring\Includes\Common\Pager as CPagerHelper;
 use CView;
 use CRoleHelper;
 use CSettingsHelper;
@@ -16,8 +16,9 @@ use Modules\VMwareMonitoring\Includes\VMwareCollector;
 use Modules\VMwareMonitoring\Includes\VMwareLocationGroups;
 use Modules\VMwareMonitoring\Includes\VMwareVCenterSort;
 
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
+
 class CControllerVMwareListData extends CController {
-	private const LOCATION_MACRO = '{$VMWARE.LOCATION}';
 	private const TABS = ['vcenters', 'issues', 'problems'];
 
 	protected function init(): void {
@@ -97,19 +98,7 @@ class CControllerVMwareListData extends CController {
 
 		foreach ($hosts as &$host) {
 			$host += ['inventory' => []];
-			$host['location_path'] = [];
-			foreach ($host['macros'] ?? [] as $macro) {
-				if (($macro['macro'] ?? '') !== self::LOCATION_MACRO
-						|| (int) ($macro['type'] ?? ZBX_MACRO_TYPE_TEXT) !== ZBX_MACRO_TYPE_TEXT) {
-					continue;
-				}
-
-				$host['location_path'] = array_values(array_filter(
-					array_map('trim', explode(',', (string) ($macro['value'] ?? ''))),
-					static fn(string $part): bool => $part !== ''
-				));
-				break;
-			}
+			$host['location_path'] = VMwareLocationGroups::path($host['macros'] ?? []);
 			unset($host['macros']);
 		}
 		unset($host);

@@ -1,8 +1,11 @@
 <?php declare(strict_types = 0);
+use Modules\VMwareMonitoring\Includes\Common\Summary;
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
@@ -98,16 +101,8 @@ $makeIconButton = static function (string $modifier, string $label): CTag {
 };
 
 $makeStat = static function (string $id, string $modifier, string $label, $value): CDiv {
-	return (new CDiv([
-		(new CDiv($label))->addClass('vmware-monitoring-statseg-label'),
-		(new CDiv(
-			(new CSpan($value === null ? '-' : (string) $value))
-				->setId('vmware-monitoring-stat-'.$id)
-				->addClass('vmware-monitoring-card-value')
-		))->addClass('vmware-monitoring-statseg-figure')
-	]))
-		->addClass('vmware-monitoring-statseg')
-		->addClass('vmware-monitoring-card-'.$modifier);
+	return Summary::card($label, $value === null ? '-' : (string) $value,
+		['modifier' => $modifier, 'value_id' => 'vmware-monitoring-stat-'.$id]);
 };
 
 $health = VMwareFormatter::vcenterHealth($data['vcenter_metrics']['health']);
@@ -117,8 +112,7 @@ $page->addItem(
 	(new CDiv([
 		VMwareBreadcrumb::make([
 			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
-			(new CSpan($data['host']['name']))->addClass('vmware-monitoring-breadcrumb-current')
+			(new CSpan($data['host']['name']))
 		]),
 		(new CDiv([
 			(new CDiv([
@@ -144,11 +138,11 @@ $page->addItem(
 );
 
 $page->addItem(
-	(new CDiv([
+	Summary::strip([
 		$makeStat('hypervisors', 'nodes', _('Hypervisors'), $data['hypervisors_count']),
 		$makeStat('discovered-vms', 'total', _('Discovered VMs'), $data['vms_count']),
 		$makeStat('total-vms', 'total', _('Total VMs'), $data['reported_vms_count'])
-	]))->addClass('vmware-monitoring-statstrip')
+	])
 );
 
 $tabs = [];

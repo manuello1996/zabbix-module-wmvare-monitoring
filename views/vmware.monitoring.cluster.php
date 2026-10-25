@@ -1,9 +1,13 @@
 <?php declare(strict_types = 0);
+use Modules\VMwareMonitoring\Includes\Common\Summary;
+use Modules\VMwareMonitoring\Includes\Common\CapacityBar;
 
 use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 use Modules\VMwareMonitoring\Includes\VMwareTabRenderer;
 use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
@@ -42,12 +46,9 @@ $page->addItem(
 	(new CDiv([
 		VMwareBreadcrumb::make([
 			new CLink(_('vCenters'), (new CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			new CLink($data['vcenter']['name'], $vcenter_url),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
 			new CLink(_('Clusters'), $clusters_url),
-			(new CSpan('›'))->addClass('vmware-monitoring-breadcrumb-sep'),
-			(new CSpan($cluster['name']))->addClass('vmware-monitoring-breadcrumb-current')
+			(new CSpan($cluster['name']))
 		]),
 		I::value((new CSpan($cluster_state['text']))
 			->addClass('vmware-monitoring-state')
@@ -56,12 +57,7 @@ $page->addItem(
 );
 
 $make_stat = static function (string $modifier, string $label, $value): CDiv {
-	return (new CDiv([
-		(new CDiv($label))->addClass('vmware-monitoring-statseg-label'),
-		(new CDiv($value))->addClass('vmware-monitoring-statseg-figure')
-	]))
-		->addClass('vmware-monitoring-statseg')
-		->addClass('vmware-monitoring-card-'.$modifier);
+	return Summary::card($label, $value, ['modifier' => $modifier]);
 };
 
 $problem_value = (string) $cluster['totals']['problems'];
@@ -76,40 +72,35 @@ if ($cluster['totals']['problems'] > 0) {
 }
 
 $page->addItem(
-	(new CDiv([
+	Summary::strip([
 		$make_stat('nodes', _('Hypervisors'),
 			(new CLink((string) $cluster['hypervisor_count'], $hypervisors_url))
-				->addClass('vmware-monitoring-card-value')
+
 		),
 		$make_stat('total', _('Connected'),
 			(new CSpan($cluster['totals']['connection_known'] > 0
 				? $cluster['totals']['connected'].' / '.$cluster['hypervisor_count']
-				: '-'))->addClass('vmware-monitoring-card-value')
+				: '-'))
 		),
 		$make_stat('total', _('Virtual machines'),
-			(new CSpan((string) $cluster['totals']['vm_count']))->addClass('vmware-monitoring-card-value')
+			(new CSpan((string) $cluster['totals']['vm_count']))
 		),
 		$make_stat('total', _('Discovered VMs'),
-			(new CLink((string) $cluster['discovered_vms'], $vms_url))->addClass('vmware-monitoring-card-value')
+			(new CLink((string) $cluster['discovered_vms'], $vms_url))
 		),
 		$make_stat($cluster['totals']['problems'] > 0 ? 'stopped' : 'total', _('Active problems'),
-			(new CSpan($problem_value))->addClass('vmware-monitoring-card-value')
+			(new CSpan($problem_value))
 		)
-	]))->addClass('vmware-monitoring-statstrip')
+	])
 );
 
 $utilization = static function ($value) {
 	if ($value === null) {
 		return '-';
 	}
-	$percent = max(0, min(100, (float) $value));
 	return (new CDiv([
 		new CSpan(VMwareFormatter::percent($value)),
-		(new CDiv(
-			(new CDiv())->addClass('vmware-monitoring-progress-fill')
-				->addClass($percent >= 90 ? 'vmware-monitoring-progress-crit' : null)
-				->setAttribute('style', 'width: '.number_format($percent, 2, '.', '').'%')
-		))->addClass('vmware-monitoring-progress')
+		CapacityBar::render($value)
 	]))->addClass('vmware-monitoring-capacity-cell');
 };
 

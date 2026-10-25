@@ -2,6 +2,8 @@
 
 namespace Modules\VMwareMonitoring\Actions;
 
+use Modules\VMwareMonitoring\Includes\Common\AutoRefresh;
+
 use API;
 use CController;
 use CControllerResponseData;
@@ -10,6 +12,8 @@ use CProfile;
 use CRoleHelper;
 use CWebUser;
 use Modules\VMwareMonitoring\Includes\VMwareVCenterSort;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 class CControllerVMwareList extends CController {
 	public const PROFILE_GROUPIDS = 'web.vmware.monitoring.list.filter.groupids';
@@ -90,7 +94,7 @@ class CControllerVMwareList extends CController {
 			'sort' => $sort,
 			'sortorder' => $sortorder,
 			// The user's general Zabbix refresh preference must not enable polling here.
-			'refresh_interval' => max(10, timeUnitToSeconds(CWebUser::getRefresh()) ?: 60)
+			'refresh_interval' => AutoRefresh::interval(timeUnitToSeconds(CWebUser::getRefresh()))
 		]);
 		$response->setTitle(_('VMware vCenters'));
 		$this->setResponse($response);

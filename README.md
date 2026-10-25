@@ -292,3 +292,41 @@ network settings, endpoints, credentials, coverage limits and cleanup details.
 
 Module scaffolding and the original UI/UX approach were based on
 [Monzphere/zabbix-module-docker](https://github.com/Monzphere/zabbix-module-docker).
+
+## Shared components and local releases
+
+This module bundles its own copy of `zabbix-module-common`. Installation needs no
+other module, shared repository, Composer or npm. Shared grouping, tab search controls, styles and
+formatting helpers are generated with this module's own namespace and CSS prefix.
+
+For development, keep `zabbix-module-common` alongside this repository. Edit common
+sources there, then run `.\release.ps1 -SyncOnly` here. `common.config.json` defines
+this module's prefixes; `common.lock.json` records the exact source revision and
+bundled file hashes. Do not edit generated files directly.
+
+From this module directory, publish a standalone version with Git and Python 3.10+
+installed and Git push access to the existing `origin`:
+
+```powershell
+.\release.ps1 -Version <new-module-version> -LocalOnly
+.\release.ps1 -Version <new-module-version>
+```
+
+Replace `<new-module-version>` with a numeric version such as `1.4.0`. The first
+command updates local files and creates `dist/<module-id>-<version>.zip` without
+committing or pushing. The second imports committed common sources, builds the
+ZIP, commits **all nonignored changes in this module**, creates `v<version>` and
+atomically pushes the current branch and tag to `origin`. Review your changes
+before running it. The ZIP includes all runtime dependencies and excludes release
+tools, Git metadata and developer fixtures.
+
+Add `-GitHubRelease` to also create a GitHub Release and attach the ZIP; this option
+requires GitHub CLI and `gh auth login`. Normal Git pushes need no GitHub CLI.
+There is no GitHub Actions dependency.
+
+Common sources must be committed before publishing. If the common repository is
+absent, the script uses the verified bundled version. Use `-UseBundled` to select
+it explicitly, or `-CommonPath C:\path\to\zabbix-module-common` for another layout.
+Python is also supported: `python tools/release.py <version>` (add `--local-only`
+for a local build, `--sync-only` to only synchronize, or `--github-release` to
+attach the ZIP). No script in a deployed module accesses the common repository.

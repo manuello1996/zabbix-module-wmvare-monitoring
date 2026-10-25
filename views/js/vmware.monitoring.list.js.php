@@ -2,10 +2,6 @@
 <script>
 window.vmware_monitoring_list = new class {
 	init(config) {
-		// Polling is an explicit choice for this page, independent of Zabbix's user default.
-		this.refresh = 0;
-		this.refreshInterval = Math.max(10, Number(config.refresh_interval) || 60);
-		this.lastUpdated = '';
 		this.activeTab = String(config.tab || 'vcenters');
 		this.content = document.getElementById('vmware-monitoring-tab-content');
 		this.summary = document.getElementById('vmware-monitoring-list-summary');
@@ -13,7 +9,6 @@ window.vmware_monitoring_list = new class {
 		this.tabContent = new Map();
 		this.tabRequests = new Map();
 		this.filters = {groupids: config.filter_groupids || [], hostids: config.filter_hostids || []};
-		this.refreshTimer = null;
 		this.hasData = false;
 		this.cacheLifetime = 60 * 1000;
 		this.locationStates = new Map();
@@ -45,22 +40,12 @@ window.vmware_monitoring_list = new class {
 		}
 		this.bindTabs();
 		this.bindRefresh();
-		this.bindAutoRefresh();
+		this.bindAutoRefresh(config.refresh_interval);
 		this.activateTab(this.activeTab, {force: Boolean(config.force_refresh)});
 	}
 
 	applyLocationStates() {
-		this.content?.querySelectorAll('[data-vmware-location-toggle]').forEach(button => {
-			const key = button.dataset.vmwareLocationToggle;
-			if (!this.locationStates.has(key)) {
-				this.locationStates.set(key, button.getAttribute('aria-expanded') === 'false');
-			}
-			button.setAttribute('aria-expanded', this.locationStates.get(key) ? 'false' : 'true');
-		});
-		this.content?.querySelectorAll('[data-vmware-location-ancestors]').forEach(row => {
-			row.hidden = JSON.parse(row.dataset.vmwareLocationAncestors)
-				.some(key => this.locationStates.get(key) === true);
-		});
+		window.VMwareCommon.LocationGroups.apply(this.content, this.locationStates);
 	}
 
 	toggleLocation(event) {
@@ -147,20 +132,13 @@ window.vmware_monitoring_list = new class {
 		document.getElementById('vmware-monitoring-refresh-vcenters')?.addEventListener('submit', refresh);
 	}
 
-	bindAutoRefresh() {
-		const toggle = document.getElementById('vmware-monitoring-auto-refresh');
-		if (!toggle) {
-			return;
-		}
-		toggle.checked = false;
-		toggle.addEventListener('change', () => {
-			clearTimeout(this.refreshTimer);
-			this.refresh = toggle.checked ? this.refreshInterval : 0;
-			this.cacheLifetime = Math.min(this.refresh || 60, 60) * 1000;
-			if (this.tabRequests.size === 0) {
-				this.setRefreshStatus(this.completedStatus());
-				this.scheduleRefresh();
-			}
+	bindAutoRefresh(interval) {
+		this.autoRefresh = new window.VMwareCommon.AutoRefresh({
+			control: document.getElementById('vmware-monitoring-auto-refresh'), interval,
+			status: document.getElementById('vmware-monitoring-refresh-status'),
+			onRefresh: () => this.activateTab(this.activeTab, {reload: true}),
+			isBusy: () => this.tabRequests.size > 0,
+			onChange: () => { this.cacheLifetime = this.autoRefresh.cacheLifetime; }
 		});
 	}
 
@@ -205,7 +183,7 @@ window.vmware_monitoring_list = new class {
 
 		this.activeTab = key;
 		const activation = ++this.tabActivation;
-		clearTimeout(this.refreshTimer);
+		this.autoRefresh.pause();
 		const target = new URL(url, window.location.href);
 		['force_vcenter_refresh', 'filter_set', 'filter_rst'].forEach(name => target.searchParams.delete(name));
 		const cacheKey = this.tabCacheKey(target.href);
@@ -246,12 +224,11 @@ window.vmware_monitoring_list = new class {
 			this.content.innerHTML = tab_data.content;
 			this.summary.innerHTML = tab_data.summary;
 			this.hasData = true;
-			this.lastUpdated = new Date(tab_data.loadedAt).toLocaleTimeString();
+			this.autoRefresh.updated(tab_data.loadedAt);
 			this.applyLocationStates();
 			document.dispatchEvent(new CustomEvent('zbx_reload', {
 				detail: {source: 'vmware-monitoring-list', tab: key}
 			}));
-			this.setRefreshStatus(this.completedStatus());
 		}
 		catch (error) {
 			if (this.activeTab === key && this.tabActivation === activation && error.name !== 'AbortError') {
@@ -276,16 +253,7 @@ window.vmware_monitoring_list = new class {
 	}
 
 	scheduleRefresh() {
-		if (this.refresh <= 0) {
-			return;
-		}
-		this.refreshTimer = setTimeout(() => {
-			if (document.hidden || (typeof overlays_stack !== 'undefined' && overlays_stack.length)) {
-				this.scheduleRefresh();
-				return;
-			}
-			this.activateTab(this.activeTab, {reload: true});
-		}, this.refresh * 1000);
+		this.autoRefresh.resume();
 	}
 
 	tabCacheKey(url) {
@@ -352,18 +320,7 @@ window.vmware_monitoring_list = new class {
 	}
 
 	setRefreshStatus(message) {
-		const status = document.getElementById('vmware-monitoring-refresh-status');
-		if (status) {
-			status.textContent = message;
-		}
-	}
-
-	completedStatus() {
-		const updated = this.lastUpdated
-			? <?= json_encode(_('Updated at %1$s')) ?>.replace('%1$s', this.lastUpdated) : '';
-		return this.refresh > 0
-			? [updated, <?= json_encode(_('Auto-refresh enabled')) ?>].filter(Boolean).join(' · ')
-			: updated;
+		this.autoRefresh.setStatus(message);
 	}
 
 	openHostMenu(event) {

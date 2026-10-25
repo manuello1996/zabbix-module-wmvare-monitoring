@@ -1,0 +1,61 @@
+# Keep generated bundle hashes identical on Windows and Linux.
+includes/common/** text eol=lf
+assets/css/common.css text eol=lf
+tools/release.py text eol=lf
+release.ps1 text eol=lf
+common.lock.json text eol=lf
+common.config.json text eol=lf
+assets/js/common.js text eol=lf
+assets/css/components.css text eol=lf
+assets/js/components.js text eol=lf
+
+# Keep development data out of GitHub source archives.
+.gitignore export-ignore
+.gitattributes export-ignore
+.github export-ignore
+.github/** export-ignore
+.tools export-ignore
+.tools/** export-ignore
+.vscode export-ignore
+.vscode/** export-ignore
+.idea export-ignore
+.idea/** export-ignore
+dist export-ignore
+dist/** export-ignore
+dev export-ignore
+dev/** export-ignore
+tests export-ignore
+tests/** export-ignore
+test export-ignore
+test/** export-ignore
+mock export-ignore
+mock/** export-ignore
+mocks export-ignore
+mocks/** export-ignore
+fixtures export-ignore
+fixtures/** export-ignore
+**/dev export-ignore
+**/dev/** export-ignore
+**/tests export-ignore
+**/tests/** export-ignore
+**/test export-ignore
+**/test/** export-ignore
+**/mock export-ignore
+**/mock/** export-ignore
+**/mocks export-ignore
+**/mocks/** export-ignore
+**/fixtures export-ignore
+**/fixtures/** export-ignore
+**/__pycache__ export-ignore
+**/__pycache__/** export-ignore
+**/node_modules export-ignore
+**/node_modules/** export-ignore
+**/.env* export-ignore
+**/.env*/** export-ignore
+**/*.pyc export-ignore
+**/*.pyo export-ignore
+**/*.log export-ignore
+tools export-ignore
+tools/** export-ignore
+release.ps1 export-ignore
+common.config.json export-ignore

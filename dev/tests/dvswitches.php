@@ -5,6 +5,7 @@ if (!is_file($ui.'/include/defines.inc.php')) { throw new RuntimeException('Prov
 if (!function_exists('_')) { function _($text) { return $text; } }
 function _s($text, ...$args) { return sprintf($text, ...$args); }
 function _x($text, $context) { return $text; }
+function zbx_formatDomId($value) { return str_replace(['[', ']'], ['_', ''], $value); }
 function timeUnitToSeconds($value) { return 86400; }
 class CSettingsHelper {
 	public const HISTORY_PERIOD = 'history_period';

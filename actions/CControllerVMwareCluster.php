@@ -6,11 +6,13 @@ use API;
 use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
-use CPagerHelper;
+use Modules\VMwareMonitoring\Includes\Common\Pager as CPagerHelper;
 use CRoleHelper;
 use CUrl;
 use CWebUser;
 use Modules\VMwareMonitoring\Includes\VMwareCollector;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 class CControllerVMwareCluster extends CController {
 	private array $vcenter = [];

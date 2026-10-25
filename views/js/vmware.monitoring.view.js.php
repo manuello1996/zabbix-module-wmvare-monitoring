@@ -7,7 +7,7 @@ window.vmware_monitoring = new class {
 		this.activeTab = String(config.tab || 'overview');
 		this.renderedTab = null;
 		this.state = new Map();
-		this.searchTimer = null;
+		this.searchInput = null;
 		this.request = null;
 		this.tabCache = new Map();
 		this.sparklineCache = new Map();
@@ -49,7 +49,7 @@ window.vmware_monitoring = new class {
 	}
 
 	activateTab(key, historyMode = null) {
-		window.clearTimeout(this.searchTimer);
+		this.searchInput?.cancel();
 		this.activeTab = key;
 		document.querySelectorAll('[data-vmware-monitoring-tab]').forEach(tab => {
 			const active = tab.dataset.vmwareMonitoringTab === key;
@@ -104,38 +104,24 @@ window.vmware_monitoring = new class {
 			this.loadTab(this.activeTab);
 		});
 
-		this.panel.addEventListener('input', event => {
-			if (!event.target.matches('[data-vmware-monitoring-server-search]')) {
-				return;
+		this.searchInput = new window.VMwareCommon.SearchInput(this.panel, {
+			selector: '[data-vmware-monitoring-server-search]', delay: 350,
+			onCancel: () => this.request?.abort(),
+			onChange: (input, immediate) => {
+				const tab = this.activeTab;
+				Object.assign(this.getState(tab), {search: input.value.trim(), page: 1});
+				this.searchInput.queue(() => {
+					if (this.activeTab !== tab) return;
+					this.updateUrl('push');
+					this.loadTab(tab);
+				}, immediate);
 			}
-			window.clearTimeout(this.searchTimer);
-			const tab = this.activeTab;
-			const state = this.getState(tab);
-			state.search = event.target.value.trim();
-			state.page = 1;
-			this.searchTimer = window.setTimeout(() => {
-				if (this.activeTab !== tab) {
-					return;
-				}
-				this.updateUrl('push');
-				this.loadTab(tab);
-			}, 350);
 		});
 
 		this.panel.addEventListener('keydown', event => {
-			const datastoreToggle = event.target.closest('[data-vmware-monitoring-datastore-toggle]');
-			if (datastoreToggle && event.target === datastoreToggle
-					&& (event.key === 'Enter' || event.key === ' ')) {
-				event.preventDefault();
-				this.toggleDatastore(datastoreToggle);
-				return;
-			}
-
 			const sort = event.target.closest('[data-vmware-monitoring-sort]');
-			if (sort && (event.key === 'Enter' || event.key === ' ')) {
-				event.preventDefault();
-				this.sortTab(sort.dataset.vmwareMonitoringSort);
-			}
+			if (sort) window.VMwareCommon.SortableHeader.key(event,
+				() => this.sortTab(sort.dataset.vmwareMonitoringSort));
 		});
 	}
 
@@ -145,13 +131,7 @@ window.vmware_monitoring = new class {
 			return;
 		}
 
-		const expanded = toggle.getAttribute('aria-expanded') !== 'true';
-		toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-		toggle.setAttribute('title', expanded
-			? <?= json_encode(_('Hide attachment details')) ?>
-			: <?= json_encode(_('Show attachment details')) ?>
-		);
-		details.hidden = !expanded;
+		const expanded = window.VMwareCommon.RowDetails.toggle(toggle, details);
 		if (!expanded || details.dataset.vmwareMonitoringDatastoreLoaded === '1'
 				|| details.dataset.vmwareMonitoringDatastoreLoading === '1') {
 			return;
@@ -163,6 +143,7 @@ window.vmware_monitoring = new class {
 			return;
 		}
 		details.dataset.vmwareMonitoringDatastoreLoading = '1';
+		content.setAttribute('aria-busy', 'true');
 		content.textContent = <?= json_encode(_('Loading attachment metrics...')) ?>;
 		try {
 			const response = await fetch(url, {cache: 'no-store'});
@@ -180,6 +161,7 @@ window.vmware_monitoring = new class {
 			content.textContent = <?= json_encode(_('Unable to load attachment metrics.')) ?>;
 		}
 		finally {
+			content.setAttribute('aria-busy', 'false');
 			delete details.dataset.vmwareMonitoringDatastoreLoading;
 		}
 	}
@@ -425,76 +407,11 @@ window.vmware_monitoring = new class {
 	}
 
 	drawSparkline(target, points) {
-		const width = 100;
-		const height = 24;
-		const pad = 3;
-		const history = Array.isArray(points)
-			? points.filter(point => Number.isFinite(Number(point[1])))
-			: [];
-		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-
-		svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-		svg.setAttribute('preserveAspectRatio', 'none');
-		svg.classList.add('vmware-monitoring-spark-svg');
-
-		if (history.length === 0) {
-			target.setAttribute('aria-label', <?= json_encode(_('No CPU history data')) ?>);
-			const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-			const y = height - pad;
-			line.setAttribute('x1', '0');
-			line.setAttribute('y1', String(y));
-			line.setAttribute('x2', String(width));
-			line.setAttribute('y2', String(y));
-			line.classList.add('vmware-monitoring-spark-flat');
-			svg.append(line);
-		}
-		else {
-			const values = history.map(point => Number(point[1]));
-			const min = Math.min(...values);
-			const max = Math.max(...values);
-			const current = values[values.length - 1];
-			const label = [
-				`${<?= json_encode(_('Minimum')) ?>}: ${min.toFixed(1)}%`,
-				`${<?= json_encode(_('Current')) ?>}: ${current.toFixed(1)}%`,
-				`${<?= json_encode(_('Maximum')) ?>}: ${max.toFixed(1)}%`
-			].join(', ');
-			target.setAttribute('aria-label', label);
-			const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-			title.textContent = label;
-			svg.append(title);
-
-			const coordinates = values.map((value, index) => {
-				const x = values.length > 1 ? index / (values.length - 1) * width : width;
-				const bounded = Math.max(0, Math.min(100, value));
-				const y = height - pad - bounded / 100 * (height - 2 * pad);
-				return `${x.toFixed(1)},${y.toFixed(1)}`;
-			});
-
-			if (values.length === 1) {
-				const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-				const [x, y] = coordinates[0].split(',');
-				point.setAttribute('cx', x);
-				point.setAttribute('cy', y);
-				point.setAttribute('r', '2');
-				point.classList.add('vmware-monitoring-spark-point');
-				svg.append(point);
-			}
-			else {
-				const fill = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-				fill.setAttribute('points',
-					`0,${height - pad} ${coordinates.join(' ')} ${width},${height - pad}`);
-				fill.classList.add('vmware-monitoring-spark-fill');
-				svg.append(fill);
-
-				const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-				line.setAttribute('points', coordinates.join(' '));
-				line.setAttribute('fill', 'none');
-				line.classList.add('vmware-monitoring-spark-line');
-				svg.append(line);
-			}
-		}
-
-		target.replaceChildren(svg);
+		window.VMwareCommon.Sparkline.draw(target, points, {
+			emptyLabel: <?= json_encode(_('No CPU history data')) ?>,
+			labels: {min: <?= json_encode(_('Minimum')) ?>, current: <?= json_encode(_('Current')) ?>,
+				max: <?= json_encode(_('Maximum')) ?>}
+		});
 	}
 };
 </script>

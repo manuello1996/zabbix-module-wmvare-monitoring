@@ -8,12 +8,15 @@ const source = readFileSync(new URL('../../views/js/vmware.monitoring.dvswitch.j
 const handlers = {};
 const first = {hidden: true}, second = {hidden: true};
 const rows = {first, second};
-const context = {document: {
+const context = {window: {}, document: {
 	addEventListener(type, fn) {handlers[type] = fn;}, getElementById(id) {return rows[id] ?? null;}
 }};
-vm.runInNewContext(source, context);
+vm.runInNewContext(readFileSync(new URL('../../assets/js/common.js', import.meta.url), 'utf8') + '\n'
+	+ readFileSync(new URL('../../assets/js/components.js', import.meta.url), 'utf8') + '\n' + source, context);
+const parent = {classList: {toggle(_name, expanded) { this.expanded = expanded; }}};
 const button = {
 	dataset: {vmwareDvsPortToggle: 'first'}, attributes: {'aria-expanded': 'false'},
+	textContent: 'Port details', closest: () => parent,
 	getAttribute(name) {return this.attributes[name];},
 	setAttribute(name, value) {this.attributes[name] = value;}
 };
@@ -21,7 +24,8 @@ handlers.click({target: {closest: () => button}});
 assert.equal(first.hidden, false);
 assert.equal(second.hidden, true, 'Expanding one port leaves other rows collapsed');
 assert.equal(button.attributes['aria-expanded'], 'true');
-assert.equal(button.textContent, 'Hide details');
+assert.equal(button.textContent, 'Port details', 'The shared control keeps its label while its arrow/state changes');
+assert.equal(parent.classList.expanded, true);
 handlers.click({target: {closest: () => button}});
 assert.equal(first.hidden, true);
 assert.equal(button.attributes['aria-expanded'], 'false');
@@ -29,7 +33,7 @@ assert.equal(button.textContent, 'Port details');
 button.dataset.vmwareDvsPortToggle = 'missing';
 handlers.click({target: {closest: () => button}});
 handlers.click({target: {closest: () => null}});
-console.log('Port expansion checks passed: full-row toggle, accessible state, independent panels and missing rows.');
+console.log('Port expansion checks passed: shared button, row highlight, accessible state, independent panels and missing rows.');
 let focused = false, scrolled = false;
 first.id = 'first';
 first.scrollIntoView = () => {scrolled = true;};

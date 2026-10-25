@@ -38,10 +38,10 @@ check(str_contains($html, 'title="VM ID: vm-41">Database</span>'), 'Resolved VM 
 check(!str_contains($html, 'Database (VM ID:'), 'Resolved VM has no visible ID suffix');
 check(!str_contains($html, 'VirtualMachine: vm-41') && !str_contains($html, 'HostSystem: host-34'), 'No internal type prefixes in reference labels');
 check(str_contains($html, 'esxi-02') && str_contains($html, 'Host ID: host-34'), 'Name is shown, host ID remains in tooltip');
-check(substr_count($html, 'colspan="10"') === 3, 'Each port detail panel spans all ten columns');
+check(substr_count($html, 'colspan="9"') === 3, 'Each port detail panel spans all nine columns; its control sits beside the port name');
 check(substr_count($html, 'data-vmware-dvs-port-toggle=') === 3, 'Each summary has its own accessible toggle');
 check(substr_count($html, 'aria-expanded="false"') === 3, 'Panels initially collapsed');
-check(str_contains($html, 'vmware-monitoring-dvs-detail-grid'), 'Runtime and counters share the full-width grid');
+check(str_contains($html, 'vmware-monitoring-metric-grid'), 'Runtime and counters use the shared detail grid');
 API::$host_inventory = [array_replace($inventory, ['lastvalue' => '[{"id":"host-34","name":"<script>unsafe</script>"}]'])];
 $unsafe = Collector::distributedSwitchDetail('42', 'uuid-1');
 $html = (string) R::table(['section' => 'ports', 'vcenter' => ['hostid' => '42'], 'switch' => $unsafe,

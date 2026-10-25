@@ -9,8 +9,7 @@
 			row.hidden = false;
 			const toggle = document.querySelector('[data-vmware-dvs-port-toggle="' + row.id + '"]');
 			if (toggle !== null) {
-				toggle.setAttribute('aria-expanded', 'true');
-				toggle.textContent = <?= json_encode(_('Hide details')) ?>;
+				window.VMwareCommon.RowDetails.setExpanded(toggle, row, true);
 				toggle.focus({preventScroll: true});
 			}
 			row.scrollIntoView({block: 'nearest'});
@@ -20,10 +19,7 @@
 		if (button === null) { return; }
 		const row = document.getElementById(button.dataset.vmwareDvsPortToggle);
 		if (row === null) { return; }
-		const expanded = button.getAttribute('aria-expanded') === 'true';
-		row.hidden = expanded;
-		button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-		button.textContent = expanded ? <?= json_encode(_('Port details')) ?> : <?= json_encode(_('Hide details')) ?>;
+		window.VMwareCommon.RowDetails.toggle(button, row);
 	});
 })();
 </script>

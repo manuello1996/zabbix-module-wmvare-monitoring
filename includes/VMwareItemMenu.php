@@ -1,6 +1,9 @@
 <?php declare(strict_types = 0);
 
 namespace Modules\VMwareMonitoring\Includes;
+use Modules\VMwareMonitoring\Includes\Common\ItemActions;
+
+require_once __DIR__.'/common/bootstrap.php';
 
 /** Native, permission-aware item actions for values backed by a single item. */
 class VMwareItemMenu {
@@ -29,8 +32,6 @@ class VMwareItemMenu {
 				$url->setArgument('tab', 'datastores');
 			}
 		}
-		return (new \CLinkAction($label))->setMenuPopup(\CMenuPopupHelper::getItem([
-			'itemid' => $itemid, 'context' => 'host', 'backurl' => $url->getUrl()
-		]))->setTitle(_('Item actions'))->addClass('vmware-monitoring-item-value');
+		return ItemActions::link($label, $itemid, $url->getUrl(), ['class' => 'vmware-monitoring-item-value']);
 	}
 }

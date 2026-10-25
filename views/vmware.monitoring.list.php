@@ -1,6 +1,10 @@
 <?php declare(strict_types = 0);
 
+use Modules\VMwareMonitoring\Includes\Common\AutoRefresh;
+
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
+
+require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
@@ -22,16 +26,13 @@ $page->setControls(
 		->addVar('sortorder', $data['sortorder'])
 		->addItem((new CSubmitButton(_('Refresh vCenters'), 'force_vcenter_refresh', 1))
 			->setId('vmware-monitoring-refresh-vcenters-button'))
-		->addItem((new CDiv([
-			(new CCheckBox('vmware_auto_refresh'))->setId('vmware-monitoring-auto-refresh')
-				->setLabel(_('Auto-refresh'))->setChecked(false)
-		]))->addClass('vmware-monitoring-auto-refresh'))
+		->addItem(AutoRefresh::control('vmware-monitoring-auto-refresh', $data['refresh_interval']))
 );
 
 $page->addItem(
 	(new CDiv(
 		VMwareBreadcrumb::make([
-			(new CSpan(_('vCenters')))->addClass('vmware-monitoring-breadcrumb-current')
+			(new CSpan(_('vCenters')))
 		])
 	))->addClass('vmware-monitoring-topbar')
 );
@@ -103,9 +104,7 @@ foreach ([['vcenters', _('vCenters')], ['issues', _('Issues')], ['problems', _('
 		->setAttribute('aria-selected', $active ? 'true' : 'false');
 }
 $page->addItem((new CDiv($tabs))->addClass('vmware-monitoring-tabs')->setAttribute('role', 'tablist'));
-$page->addItem((new CDiv())
-	->setId('vmware-monitoring-refresh-status')->setAttribute('role', 'status')
-	->addClass('vmware-monitoring-refresh-status'));
+$page->addItem(AutoRefresh::status('vmware-monitoring-refresh-status'));
 $page->addItem((new CDiv(
 	(new CDiv(_('Loading VMware data…')))->addClass('vmware-monitoring-section')
 ))->setId('vmware-monitoring-tab-content')->setAttribute('aria-busy', 'true'));
