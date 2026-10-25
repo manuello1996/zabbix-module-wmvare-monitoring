@@ -83,9 +83,9 @@ $page->addItem(
 		->addVar('sortorder', $data['sortorder'])
 		->addFilterTab(_('Filter'), [$filter_form])
 );
-$page->addItem((new CDiv((new CView('vmware.monitoring.list.summary', [
+$page->addItem((new CDiv(new CObject((new CView('vmware.monitoring.list.summary', [
 	'totals' => array_fill_keys(['vcenters', 'hypervisors', 'vms', 'datastores'], '—')
-]))->getOutput()))->setId('vmware-monitoring-list-summary')->setAttribute('aria-busy', 'true'));
+]))->getOutput())))->setId('vmware-monitoring-list-summary')->setAttribute('aria-busy', 'true'));
 
 $tab_url = static function (string $tab): CUrl {
 	return (new CUrl('zabbix.php'))
