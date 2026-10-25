@@ -12,6 +12,13 @@ class VMwareItemMenu {
 		if ($itemid === null || !ctype_digit($itemid) || (int) $itemid <= 0) { return $label; }
 		$url = (new \CUrl('zabbix.php'))->formatGetArguments();
 		parse_str(parse_url($url->getUrl(), PHP_URL_QUERY) ?? '', $args);
+		if (($args['action'] ?? '') === 'vmware.monitoring.list.data') {
+			$url = (new \CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.list')
+				->setArgument('filter_set', 1);
+			foreach (['filter_groupids', 'filter_hostids', 'tab', 'page', 'sort', 'sortorder'] as $key) {
+				if (isset($args[$key])) { $url->setArgument($key, $args[$key]); }
+			}
+		}
 		if (in_array($args['action'] ?? '', ['vmware.monitoring.tab', 'vmware.monitoring.datastore.attachments'], true)) {
 			$url = (new \CUrl('zabbix.php'))->setArgument('action', 'vmware.monitoring.view')
 				->setArgument('filter_hostid', [(string) ($args['hostid'] ?? '')])->setArgument('filter_set', 1);

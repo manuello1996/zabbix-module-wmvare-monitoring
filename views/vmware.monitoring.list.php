@@ -1,49 +1,12 @@
 <?php declare(strict_types = 0);
 
-use Modules\VMwareMonitoring\Includes\VMwareFormatter;
 use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
-use Modules\VMwareMonitoring\Includes\VMwareLocationGroups;
-use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
-use Widgets\Problems\Includes\WidgetProblems;
 
 $this->addJsFile('items.js');
 $this->addJsFile('multilineinput.js');
 $this->addJsFile('class.tagfilteritem.js');
 $this->includeJsFile('vmware.monitoring.list.js.php');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
-
-$makeStat = static function (string $modifier, string $label, $value): CDiv {
-	return (new CDiv([
-		(new CDiv($label))->addClass('vmware-monitoring-statseg-label'),
-		(new CDiv((new CSpan((string) $value))->addClass('vmware-monitoring-card-value')))
-			->addClass('vmware-monitoring-statseg-figure')
-	]))
-		->addClass('vmware-monitoring-statseg')
-		->addClass('vmware-monitoring-card-'.$modifier);
-};
-
-$problemBadge = static function (array $severities, array $hostids) {
-	if (!$severities) {
-		return (new CSpan(_('None')))->addClass(ZBX_STYLE_GREEN);
-	}
-
-	$content = [];
-	krsort($severities);
-	foreach ($severities as $severity => $count) {
-		$content[] = (new CSpan((string) $count))
-			->addClass(ZBX_STYLE_PROBLEM_ICON_LIST_ITEM)
-			->addClass(CSeverityHelper::getStatusStyle((int) $severity))
-			->setTitle(CSeverityHelper::getName((int) $severity));
-	}
-
-	return (new CLink(
-		(new CDiv($content))->addClass(ZBX_STYLE_PROBLEM_ICON_LIST),
-		(new CUrl('zabbix.php'))
-			->setArgument('action', 'problem.view')
-			->setArgument('hostids', $hostids)
-			->setArgument('filter_set', 1)
-	))->addClass(ZBX_STYLE_PROBLEM_ICON_LINK);
-};
 
 $page = (new CHtmlPage())
 	->setTitle(_('VMware vCenters'))
@@ -57,7 +20,12 @@ $page->setControls(
 		->addVar('tab', $data['tab'])
 		->addVar('sort', $data['sort'])
 		->addVar('sortorder', $data['sortorder'])
-		->addItem(new CSubmitButton(_('Refresh vCenters'), 'force_vcenter_refresh', 1))
+		->addItem((new CSubmitButton(_('Refresh vCenters'), 'force_vcenter_refresh', 1))
+			->setId('vmware-monitoring-refresh-vcenters-button'))
+		->addItem((new CDiv([
+			(new CCheckBox('vmware_auto_refresh'))->setId('vmware-monitoring-auto-refresh')
+				->setLabel(_('Auto-refresh'))->setChecked(false)
+		]))->addClass('vmware-monitoring-auto-refresh'))
 );
 
 $page->addItem(
@@ -115,18 +83,9 @@ $page->addItem(
 		->addVar('sortorder', $data['sortorder'])
 		->addFilterTab(_('Filter'), [$filter_form])
 );
-
-$stats = (new CDiv([
-	(new CDiv([
-		$makeStat('nodes', _('vCenters'), $data['totals']['vcenters']),
-		$makeStat('total', _('Hypervisors'), $data['totals']['hypervisors']),
-		$makeStat('total', _('Virtual machines'), $data['totals']['vms']),
-		$makeStat('memory', _('Unique datastores'), $data['totals']['datastores'])
-	]))->addClass('vmware-monitoring-statstrip')
-]))->addClass('vmware-monitoring-section');
-$summary = (new CDiv([$stats]))
-	->setId('vmware-monitoring-list-summary');
-$page->addItem($summary);
+$page->addItem((new CDiv((new CView('vmware.monitoring.list.summary', [
+	'totals' => array_fill_keys(['vcenters', 'hypervisors', 'vms', 'datastores'], '—')
+]))->getOutput()))->setId('vmware-monitoring-list-summary')->setAttribute('aria-busy', 'true'));
 
 $tab_url = static function (string $tab): CUrl {
 	return (new CUrl('zabbix.php'))
@@ -144,239 +103,19 @@ foreach ([['vcenters', _('vCenters')], ['issues', _('Issues')], ['problems', _('
 		->setAttribute('aria-selected', $active ? 'true' : 'false');
 }
 $page->addItem((new CDiv($tabs))->addClass('vmware-monitoring-tabs')->setAttribute('role', 'tablist'));
-
-if ($data['tab'] === 'problems') {
-	$problem_content = [
-		(new CDiv(new WidgetProblems($data['problem_widget'])))
-			->addClass('dashboard-widget-problems')
-	];
-	if ($data['problem_widget']['has_more'] ?? false) {
-		$problem_content[] = (new CDiv(
-			new CLink(
-				_('View all problems'),
-				(new CUrl('zabbix.php'))
-					->setArgument('action', 'problem.view')
-			)
-		))->addClass('vmware-monitoring-pager');
-	}
-	$page
-		->addItem(
-			(new CDiv(
-				(new CDiv($problem_content))->addClass('vmware-monitoring-section')
-			))->setId('vmware-monitoring-tab-content')
-		)
-		->show();
-
-	(new CScriptTag('vmware_monitoring_list.init('.json_encode([
-		'refresh' => $data['refresh_interval'],
-		'tab' => $data['tab']
-	]).');'))->setOnDocumentReady()->show();
-	return;
-}
-
-if ($data['tab'] === 'issues') {
-	$tab_url = static function (string $sort, string $sortorder) use ($data): CUrl {
-		return (new CUrl('zabbix.php'))
-			->setArgument('action', 'vmware.monitoring.list')
-			->setArgument('tab', $data['tab'])
-			->setArgument('sort', $sort)
-			->setArgument('sortorder', $sortorder);
-	};
-	$sort_header = static function (string $label, string $field) use ($data, $tab_url): CLink {
-		$active = $data['sort'] === $field;
-		$order = $active && $data['sortorder'] === ZBX_SORT_UP ? ZBX_SORT_DOWN : ZBX_SORT_UP;
-		$arrow = new CSpan();
-		if ($active) {
-			$arrow->addClass($data['sortorder'] === ZBX_SORT_UP ? 'arrow-up' : 'arrow-down');
-		}
-
-		return (new CLink([$label, $arrow->addClass('vmware-monitoring-sort-arrow')], $tab_url($field, $order)))
-			->addClass('vmware-monitoring-sort');
-	};
-
-	$rows = $data['issues'];
-	$table = (new CTableInfo())
-		->setId('vmware-monitoring-issues-table')
-		->setHeader([
-			$sort_header(_('vCenter'), 'vcenter'),
-			$sort_header(_('Issue'), 'issue'),
-			$sort_header(_('Status'), 'status'),
-			$sort_header(_('Severity'), 'severity'),
-			$sort_header(_('Last update'), 'lastupdate')
-		])
-		->setNoDataMessage(_('No active vCenter issues found.'));
-	foreach ($rows as $row) {
-		$severity = $row['severity'] === null
-			? '-'
-			: (new CSpan(CSeverityHelper::getName((int) $row['severity'])))
-				->addClass(CSeverityHelper::getStatusStyle((int) $row['severity']));
-		$vcenter_url = (new CUrl('zabbix.php'))
-			->setArgument('action', 'vmware.monitoring.view')
-			->setArgument('filter_hostid', [$row['hostid']])
-			->setArgument('filter_set', 1);
-		$vcenter_url->setArgument('tab', 'alarms');
-		$table->addRow([
-			(new CLink($row['vcenter'], $vcenter_url))->addClass('vmware-monitoring-issue-link'),
-			(new CSpan($row['name']))->addClass('vmware-monitoring-issue-text'),
-			(new CSpan(_('Active')))->addClass('vmware-monitoring-issue-status'),
-			$severity,
-			(int) $row['lastclock'] > 0 ? zbx_date2str(DATE_TIME_FORMAT_SECONDS, (int) $row['lastclock']) : '-'
-		]);
-	}
-
-	$issue_content = [$table, $data['issues_paging']];
-	if ($data['issues_has_more']) {
-		$issue_content[] = (new CDiv(
-			new CLink(
-				_('View all problems'),
-				(new CUrl('zabbix.php'))->setArgument('action', 'problem.view')
-			)
-		))->addClass('vmware-monitoring-pager');
-	}
-
-	$page
-		->addItem(
-			(new CDiv([
-				(new CDiv($issue_content))->addClass('vmware-monitoring-section')
-			]))->setId('vmware-monitoring-tab-content')
-		)
-		->show();
-
-	(new CScriptTag('vmware_monitoring_list.init('.json_encode([
-		'refresh' => $data['refresh_interval'],
-		'tab' => $data['tab']
-	]).');'))->setOnDocumentReady()->show();
-	return;
-}
-
-$table = (new CTableInfo())
-	->setId('vmware-monitoring-vcenters-table')
-	->setHeader([
-		_('vCenter'),
-		_('Health'),
-		_('Problems'),
-		_('Version'),
-		_('Hypervisors'),
-		_('Virtual machines'),
-		_('Unique datastores'),
-		_('Notes')
-	])
-	->setNoDataMessage(_('No vCenter hosts found. Link the official "VMware" template to a monitored host.'));
-
-$previous_location_path = [];
-foreach ($data['vcenters'] as $vcenter) {
-	$location_path = $vcenter['location_path'] ?? [];
-	if ($location_path) {
-		$common_parts = 0;
-		$maximum_common_parts = min(count($previous_location_path), count($location_path));
-		while ($common_parts < $maximum_common_parts
-				&& $previous_location_path[$common_parts] === $location_path[$common_parts]) {
-			$common_parts++;
-		}
-
-		for ($depth = $common_parts; $depth < count($location_path); $depth++) {
-			$key = VMwareLocationGroups::key(array_slice($location_path, 0, $depth + 1));
-			$group = $data['location_groups'][$key];
-			$ancestors = [];
-			for ($ancestor = 1; $ancestor <= $depth; $ancestor++) {
-				$ancestors[] = VMwareLocationGroups::key(array_slice($location_path, 0, $ancestor));
-			}
-			$location_group = (new CDiv([
-				(new CButton(null, [
-					(new CSpan())->addClass('vmware-monitoring-location-chevron')->setAttribute('aria-hidden', 'true'),
-					(new CSpan($location_path[$depth]))->addClass('vmware-monitoring-location-name')
-				]))
-					->addClass('vmware-monitoring-location-toggle')
-					->setAttribute('data-vmware-location-toggle', $key)
-					->setAttribute('aria-expanded', $group['collapsed'] ? 'false' : 'true'),
-				(new CSpan(sprintf(_('%1$s vCenters'), $group['vcenters'])))
-					->addClass('vmware-monitoring-location-count')
-			]))
-				->addClass('vmware-monitoring-location-group')
-				->setAttribute('style', '--vmware-monitoring-location-depth: '.$depth);
-			$group_row = (new CRow([
-				(new CCol($location_group))->setColSpan(2),
-				$problemBadge($group['problems'], $group['problem_hostids']),
-				'', (string) $group['hypervisors'], (string) $group['vms'], (string) $group['datastores'], ''
-			]))
-				->addClass('vmware-monitoring-location-row')
-				->setAttribute('data-vmware-location-key', $key)
-				->setAttribute('data-vmware-location-ancestors', json_encode($ancestors));
-			foreach ($ancestors as $ancestor_key) {
-				if ($data['location_groups'][$ancestor_key]['collapsed']) {
-					$group_row->setAttribute('hidden', 'hidden');
-					break;
-				}
-			}
-			$table->addRow($group_row);
-		}
-		$previous_location_path = $location_path;
-	}
-	else {
-		$previous_location_path = [];
-	}
-
-	$url = (new CUrl('zabbix.php'))
-		->setArgument('action', 'vmware.monitoring.view')
-		->setArgument('filter_hostid', [$vcenter['hostid']])
-		->setArgument('filter_set', 1);
-	$health = VMwareFormatter::vcenterHealth($vcenter['metrics']['health']);
-
-	$name_cell = (new CDiv([
-			(new CSpan())->addClass('vmware-monitoring-container-icon'),
-			(new CLink($vcenter['name'], $url))
-				->addClass('vmware-monitoring-name')
-				->setAttribute('data-vmware-monitoring-host-menu', $vcenter['hostid'])
-		]))->addClass('vmware-monitoring-name-cell');
-	if ($location_path) {
-		$name_cell
-			->addClass('vmware-monitoring-location-vcenter')
-			->setAttribute('style', '--vmware-monitoring-location-depth: '.count($location_path));
-	}
-
-	$vcenter_row = new CRow([
-		$name_cell,
-		I::value((new CSpan($health['text']))
-			->addClass('vmware-monitoring-state')
-			->addClass('vmware-monitoring-state-'.$health['kind']), $vcenter['metrics'], 'health'),
-		$problemBadge($vcenter['problems'], $vcenter['problem_hostids']),
-		I::value($vcenter['metrics']['version'] ?? '-', $vcenter['metrics'], 'version'),
-		(string) $vcenter['hypervisors'],
-		(string) $vcenter['vms'],
-		(string) $vcenter['datastores'],
-		$vcenter['inventory']['notes'] ?? ''
-	]);
-	$ancestors = [];
-	for ($depth = 1; $depth <= count($location_path); $depth++) {
-		$ancestors[] = VMwareLocationGroups::key(array_slice($location_path, 0, $depth));
-	}
-	$vcenter_row->setAttribute('data-vmware-location-ancestors', json_encode($ancestors));
-	foreach ($ancestors as $key) {
-		if ($data['location_groups'][$key]['collapsed']) {
-			$vcenter_row->setAttribute('hidden', 'hidden');
-			break;
-		}
-	}
-	$table->addRow($vcenter_row);
-}
-
-$page
-	->addItem(
-		(new CDiv([
-			(new CDiv([
-				(new CTag('h4', true, [
-					(new CSpan())->setId('vmware-monitoring-refresh-status')->addClass('vmware-monitoring-refresh-status')
-				]))->addClass('vmware-monitoring-section-title'),
-				$table,
-				(new CDiv())->setId('vmware-monitoring-location-save-status')
-					->setAttribute('role', 'status')->addClass(ZBX_STYLE_RED),
-				$data['paging']
-			]))->addClass('vmware-monitoring-section')
-		]))->setId('vmware-monitoring-tab-content')
-	)
-	->show();
+$page->addItem((new CDiv())
+	->setId('vmware-monitoring-refresh-status')->setAttribute('role', 'status')
+	->addClass('vmware-monitoring-refresh-status'));
+$page->addItem((new CDiv(
+	(new CDiv(_('Loading VMware data…')))->addClass('vmware-monitoring-section')
+))->setId('vmware-monitoring-tab-content')->setAttribute('aria-busy', 'true'));
+$page->addItem(new CTag('noscript', true, _('Enable JavaScript to load VMware monitoring data.')));
+$page->show();
 
 (new CScriptTag('vmware_monitoring_list.init('.json_encode([
-	'refresh' => $data['refresh_interval'],
-	'tab' => $data['tab']
+	'refresh_interval' => $data['refresh_interval'],
+	'tab' => $data['tab'],
+	'force_refresh' => $data['force_refresh'],
+	'filter_groupids' => $data['filter_groupids'],
+	'filter_hostids' => $data['filter_hostids']
 ]).');'))->setOnDocumentReady()->show();

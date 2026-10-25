@@ -24,6 +24,19 @@ history availability. Native item and host dialogs allow authorized configuratio
 Calculated totals and physical sensor readings derived from the compact sensor payload have
 no individual source-item menu.
 
+The main page opens with its filters and navigation, then fetches the selected tab in the
+background. Inactive main-page tabs load only when selected. Pagination, vCenter and Issues
+sorting, and manual refresh update the content without reloading the page. All eight vCenter
+columns support ascending and descending sorting within each location group. Problems sort
+by event count, versions sort naturally, and unknown health states stay after known states.
+Automatic refresh is disabled by default throughout the module, independently of the
+Zabbix user's refresh preference. On the main page, enable **Auto-refresh** to opt in for
+that page visit; it uses the user's refresh interval (60 seconds if refresh is disabled).
+Loading placeholders are distinct from zero counts; failed background refreshes keep the
+last displayed data and show a retry message. Refresh shows a completion timestamp and
+temporarily disables the button while loading. Automatic refresh pauses while the page is
+hidden or a native dialog is open.
+
 Detail tabs load on demand. Search and sorting are available in supported inventories;
 pagination follows the user's **Rows per page** setting. The module supports Zabbix blue,
 dark and high-contrast dark themes and works independently of other monitoring modules.
@@ -110,6 +123,10 @@ VMware checks or force discovery on the server or proxy.
 Monitoring payloads are cached in private temporary files on the frontend, scoped to the
 user and login session. Only a small invalidation token enters the session cookie. When
 private storage is unavailable, data is read without that server cache.
+Main-inventory metrics are cached for up to 60 seconds; **Refresh vCenters** bypasses this
+cache and refreshes discovery relationships. Browser tab results expire after at most
+60 seconds (or the user's shorter refresh interval). Requests use the filters from the
+opened page, so changing filters in another browser tab does not change an in-flight view.
 
 ### Location groups and inventory notes
 

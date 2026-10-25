@@ -15,6 +15,13 @@
 	--vmware-monitoring-progress: #40c057;
 }
 
+.vmware-monitoring-auto-refresh {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 12px;
+}
+
 .vmware-monitoring-topbar {
 	display: flex;
 	align-items: flex-start;

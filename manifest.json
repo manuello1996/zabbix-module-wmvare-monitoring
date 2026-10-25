@@ -22,6 +22,10 @@
 			"view": "vmware.monitoring.list",
 			"layout": "layout.htmlpage"
 		},
+		"vmware.monitoring.list.data": {
+			"class": "CControllerVMwareListData",
+			"layout": "layout.json"
+		},
 		"vmware.monitoring.view": {
 			"class": "CControllerVMwareView",
 			"view": "vmware.monitoring.view",

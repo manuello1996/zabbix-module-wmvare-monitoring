@@ -108,6 +108,18 @@ class VMwareCollector {
 	}
 
 	public static function collectVCenterMetrics(array $hosts): array {
+		if (!$hosts) {
+			return [];
+		}
+		$hostids = array_map('strval', array_keys($hosts));
+		sort($hostids, SORT_STRING);
+		return self::cachedData('vcenters.metrics.'.hash('sha1', json_encode($hostids)),
+			self::OPERATIONAL_CACHE_TTL,
+			static fn(): array => self::collectVCenterMetricsUncached($hosts)
+		);
+	}
+
+	private static function collectVCenterMetricsUncached(array $hosts): array {
 		$result = [];
 		$empty = array_fill_keys(array_values(self::VCENTER_KEYS), null);
 
@@ -1834,31 +1846,33 @@ class VMwareCollector {
 			return [];
 		}
 
-		$triggers = API::Trigger()->get([
-			'output' => [],
-			'selectHosts' => ['hostid'],
-			'hostids' => $hostids,
-			'skipDependent' => true,
-			'monitored' => true,
-			'preservekeys' => true
-		]) ?: [];
-		if (!$triggers) {
-			return [];
-		}
-
+		// Read active problems first: loading every trigger on thousands of hosts is
+		// expensive even when only a handful of those triggers have open problems.
 		$problems = API::Problem()->get([
 			'output' => ['eventid', 'objectid', 'severity'],
-			'objectids' => array_keys($triggers),
+			'hostids' => $hostids,
 			'source' => EVENT_SOURCE_TRIGGERS,
 			'object' => EVENT_OBJECT_TRIGGER,
 			'suppressed' => false,
 			'symptom' => false
 		]) ?: [];
+		if (!$problems) {
+			return [];
+		}
+		$triggers = API::Trigger()->get([
+			'output' => [],
+			'selectHosts' => ['hostid'],
+			'hostids' => $hostids,
+			'triggerids' => array_values(array_unique(array_column($problems, 'objectid'))),
+			'skipDependent' => true,
+			'monitored' => true,
+			'preservekeys' => true
+		]) ?: [];
 
 		$wanted = array_flip($hostids);
 		$result = [];
 		foreach ($problems as $problem) {
-			foreach ($triggers[$problem['objectid']]['hosts'] as $host) {
+			foreach ($triggers[$problem['objectid']]['hosts'] ?? [] as $host) {
 				if (isset($wanted[$host['hostid']])) {
 					$result[$host['hostid']][$problem['eventid']] = (int) $problem['severity'];
 				}
