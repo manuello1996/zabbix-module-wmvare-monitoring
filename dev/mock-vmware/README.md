@@ -58,6 +58,58 @@ sparklines grow as history accumulates. The command prints the vCenter detail li
 python dev/mock-vmware/demo.py status
 ```
 
+## Folder-based discovery groups
+
+Manage folder-to-host-group rules in **Data collection > Templates > DEMO - VMware > Macros**.
+Edit the template macro **`{$VMWARE.VM.FOLDER.GROUPS}`**. Its default value is:
+
+```json
+{"FB-STP":"STP","FB-MSP":"MSP","FB-OPS":"RUN"}
+```
+
+The JSON keys are main vCenter folder names; values are Zabbix host group
+names. JSON supports punctuation and spaces in names. Save the macro and allow the normal
+proxy configuration and discovery cycles to apply it. No script rerun or container rebuild
+is needed. Setup creates the default macro only when it is missing and preserves edits.
+
+The **DEMO - VMware** VM discovery preprocessing reads the macro at runtime, matches the
+native `{#VM.FOLDER}` path and exposes the destination as `{#VM.FOLDER.GROUP}`. The VM host
+prototype uses this single folder group prototype. Every VM also belongs to the fixture's
+base group `VMware module demo`.
+
+| VM | Native vCenter folder | Discovered host group |
+|---|---|---|
+| `DC0_C0_RP0_VM0`, `DC0_C0_RP0_VM1` | `FB-STP` | `STP` |
+| `DC0_C0_RP0_VM2`, `DC0_C0_RP0_VM3` | `FB-MSP` | `MSP` |
+| Any VM moved to `FB-OPS` | `FB-OPS` | `RUN` |
+
+Only the first folder in the native path is matched; all subfolders are ignored.
+For example, `FB-MSP/05_app` and `FB-MSP/05_app/Restricted` both use the `FB-MSP` rule,
+even if a full-path or child-folder mapping exists. Matching is exact and case sensitive:
+`FB-STP-old` does not match `FB-STP`. The default `vm` root folder always uses the fallback,
+even if `vm` is listed in the mapping. Empty and unmatched folders also use the template macro
+**`{$VMWARE.VM.FOLDER.GROUP.DEFAULT}`**, initially `VMware module demo/Unmapped folders`.
+Set it to your preferred group name in the same **Macros** tab. Discovery reads both
+macros at runtime; setup preserves edits to either macro. The default must be a nonempty
+valid group name and follows the same group requirements as mapped destinations.
+Moving a VM updates its discovered group on subsequent collector/discovery cycles.
+
+Invalid JSON, non-object mappings and invalid/empty destination names produce a discovery
+preprocessing error. Macro values are URL-encoded before entering the JavaScript string,
+so apostrophes, quotes and Unicode remain data. This uses the fixture's Zabbix 7.0.22 runtime.
+Mapped names must be new groups or existing discovered groups: Zabbix 7.0 group prototypes
+[cannot reuse manually created groups](https://www.zabbix.com/documentation/7.0/en/manual/discovery/low_level_discovery/host_prototypes).
+
+Setup creates native folders `FB-STP`, `FB-MSP` and `FB-OPS`. It moves only VMs still in the
+datacenter's default VM folder: the first two go to `FB-STP`, the last two to `FB-MSP`.
+Existing user folder moves are preserved. Repeating `up` upgrades owned demo configuration
+in place, preserving discovered VM identities and history, other prototype tags, custom
+group prototypes and preprocessing. `status` prints native folders and Zabbix groups.
+
+The authenticated `/_mock/inventory` endpoint reads the native inventory (`GET`) or seeds
+folders (`POST` with `{"seed_folders":true}`). Recreating the simulator resets its native
+folders; run `up` to seed the new inventory. Discovery grouping uses folders only.
+
 ## Endpoints and scenarios
 
 | Purpose | URL |
@@ -65,6 +117,7 @@ python dev/mock-vmware/demo.py status
 | SOAP SDK from the demo proxy | `http://vmware-module-mock:8080/sdk` |
 | Gateway from Windows | `http://127.0.0.1:18989` |
 | Status and scenario control | `/_mock/status`, `/_mock/scenario` |
+| Native VM folder inventory / seed folders | `/_mock/inventory` (`GET` / `POST`) |
 | Container liveness | `/healthz` |
 
 SOAP/REST and scenario control credentials are **mock / mock**. SOAP login uses the SDK
@@ -173,7 +226,8 @@ refuses foreign template consumers, unexpected proxy consumers, unmarked objects
 a demo host whose URL was changed to another VMware endpoint.
 
 Run `up` again to recreate the dataset. Repeating `up` while it exists reuses the owned
-objects; it does not overwrite changes to the existing cloned templates.
+objects and applies the folder discovery migration described above. Other changes to the
+existing cloned templates are retained.
 
 ## Development checks
 
@@ -199,6 +253,7 @@ Adjust the second argument to the location of your Zabbix 7.0 frontend source.
 
 ```powershell
 python -B -m unittest discover -s tests -p 'test_mock_vmware.py'
+python -B -m unittest discover -s dev/tests -p 'test_vmware_folders.py'
 docker compose --project-name vmware-module-mock --file dev/mock-vmware/compose.yaml logs --tail 40 proxy
 ```
 

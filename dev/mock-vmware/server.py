@@ -11,6 +11,8 @@ import select
 import socket
 import threading
 import time
+import urllib.error
+import urllib.request
 from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
 
@@ -316,6 +318,167 @@ class DvswitchFixture:
 DVS = DvswitchFixture()
 
 
+class SimulatorInventory:
+    """Read and seed native vcsim VM folders; forward native REST when requested."""
+    prefix = '/rest/com/vmware/cis/tagging/'
+
+    def __init__(self):
+        self.url = os.environ.get('VMWARE_SIMULATOR_URL', 'http://simulator:8989').rstrip('/')
+        self.headers = {'Content-Type': 'application/json'}
+        self.sdk_cookie = None
+
+    def rest(self, method, path, data=None):
+        request = urllib.request.Request(self.url + path,
+            None if data is None else json.dumps(data).encode(), self.headers, method=method)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = response.read()
+        return json.loads(body) if body else None
+
+    def __enter__(self):
+        self.headers['Authorization'] = AUTH
+        session = self.rest('POST', '/rest/com/vmware/cis/session', {})['value']
+        self.headers = {'Content-Type': 'application/json', 'vmware-api-session-id': session}
+        return self
+
+    def __exit__(self, *_):
+        try:
+            self.rest('DELETE', '/rest/com/vmware/cis/session')
+        except (OSError, ValueError):
+            pass
+
+    def soap(self, method, fill):
+        envelope = ET.Element('{' + SOAP + '}Envelope', {'xmlns:vim': VIM})
+        operation = xml(ET.SubElement(envelope, '{' + SOAP + '}Body'), method)
+        fill(operation)
+        headers = {'Content-Type': 'text/xml', 'SOAPAction': 'urn:vim25/6.5'}
+        if self.sdk_cookie:
+            headers['Cookie'] = self.sdk_cookie
+        request = urllib.request.Request(self.url + '/sdk', ET.tostring(envelope), headers)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.headers.get('Set-Cookie'):
+                self.sdk_cookie = response.headers['Set-Cookie'].split(';', 1)[0]
+            result = ET.fromstring(response.read())
+        if result.find('.//{*}Fault') is not None:
+            raise ValueError('Simulator SOAP request failed: ' + method)
+        return result
+
+    def wait_task(self, collector, task):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            def retrieve(op):
+                xml(op, '_this', collector, type='PropertyCollector')
+                spec = xml(op, 'specSet')
+                props = xml(spec, 'propSet')
+                xml(props, 'type', 'Task')
+                xml(props, 'pathSet', 'info.state')
+                xml(props, 'pathSet', 'info.error')
+                xml(xml(spec, 'objectSet'), 'obj', task, type='Task')
+            result = self.soap('RetrieveProperties', retrieve)
+            values = {text(prop, 'name'): text(prop, 'val') for prop in result.findall('.//{*}propSet')}
+            if values.get('info.state') == 'success':
+                return
+            if values.get('info.state') == 'error':
+                raise ValueError('Simulator VM folder move failed')
+            time.sleep(.05)
+        raise ValueError('Simulator VM folder move timed out')
+
+    def seed_vm_folders(self, vms, folders, roots, collector):
+        destinations = {}
+        for root in roots:
+            for name in ('FB-STP', 'FB-MSP', 'FB-OPS'):
+                fid = next((fid for fid, folder in folders.items()
+                            if folder['parent'] == root and folder['name'] == name), None)
+                if fid is None:
+                    def create(op):
+                        xml(op, '_this', root, type='Folder')
+                        xml(op, 'name', name)
+                    fid = self.soap('CreateFolder', create).findtext('.//{*}returnval')
+                    if not fid:
+                        raise ValueError('Simulator did not create VM folder')
+                    folders[fid] = {'name': name, 'parent': root}
+                destinations[(root, name)] = fid
+        for index, vm in enumerate(vms):
+            # Seed only VMs still in the datacenter's default VM folder. Keep
+            # user moves and all VM identities, tags and monitoring history.
+            if vm['parent'] not in roots:
+                continue
+            name = 'FB-STP' if index < len(vms) / 2 else 'FB-MSP'
+            destination = destinations[(vm['parent'], name)]
+            def move(op):
+                xml(op, '_this', destination, type='Folder')
+                xml(op, 'list', vm['id'], type='VirtualMachine')
+            task = self.soap('MoveIntoFolder_Task', move).findtext('.//{*}returnval')
+            if not task:
+                raise ValueError('Simulator did not start VM folder move')
+            self.wait_task(collector, task)
+            vm['parent'] = destination
+
+    def vms(self, seed_folders=False):
+        service = self.soap('RetrieveServiceContent',
+            lambda op: xml(op, '_this', 'ServiceInstance', type='ServiceInstance')).find('.//{*}returnval')
+        manager = text(service, 'sessionManager')
+        def login(op):
+            xml(op, '_this', manager, type='SessionManager')
+            xml(op, 'userName', 'mock')
+            xml(op, 'password', 'mock')
+        self.soap('Login', login)
+        view = None
+        try:
+            def create(op):
+                xml(op, '_this', text(service, 'viewManager'), type='ViewManager')
+                xml(op, 'container', text(service, 'rootFolder'), type='Folder')
+                xml(op, 'type', 'VirtualMachine')
+                xml(op, 'type', 'Folder')
+                xml(op, 'type', 'Datacenter')
+                xml(op, 'recursive', True)
+            view = self.soap('CreateContainerView', create).find('.//{*}returnval')
+            def retrieve(op):
+                xml(op, '_this', text(service, 'propertyCollector'), type='PropertyCollector')
+                spec = xml(op, 'specSet')
+                for kind, paths in [('VirtualMachine', ['name', 'parent']), ('Folder', ['name', 'parent']),
+                                    ('Datacenter', ['vmFolder'])]:
+                    props = xml(spec, 'propSet')
+                    xml(props, 'type', kind)
+                    for path in paths:
+                        xml(props, 'pathSet', path)
+                objects = xml(spec, 'objectSet')
+                xml(objects, 'obj', view.text, type='ContainerView')
+                xml(objects, 'skip', True)
+                traversal = xml(objects, 'selectSet', **{'{' + XSI + '}type': 'vim:TraversalSpec'})
+                xml(traversal, 'type', 'ContainerView')
+                xml(traversal, 'path', 'view')
+                xml(traversal, 'skip', False)
+            result = self.soap('RetrieveProperties', retrieve)
+            vms, folders, roots = [], {}, set()
+            for obj in result.findall('.//{*}returnval'):
+                ref = obj.find('{*}obj')
+                values = {text(p, 'name'): text(p, 'val') for p in obj.findall('{*}propSet')}
+                if ref is None:
+                    continue
+                if ref.get('type') == 'VirtualMachine':
+                    vms.append({'id': ref.text, 'name': values['name'], 'parent': values.get('parent', '')})
+                elif ref.get('type') == 'Folder':
+                    folders[ref.text] = {'name': values['name'], 'parent': values.get('parent', '')}
+                elif ref.get('type') == 'Datacenter' and values.get('vmFolder'):
+                    roots.add(values['vmFolder'])
+            vms.sort(key=lambda vm: vm['name'])
+            if seed_folders:
+                self.seed_vm_folders(vms, folders, roots, text(service, 'propertyCollector'))
+            for vm in vms:
+                names, current, seen = [], vm.pop('parent'), set()
+                while current in folders and current not in roots and current not in seen:
+                    seen.add(current)
+                    names.append(folders[current]['name'])
+                    current = folders[current]['parent']
+                vm['folder'] = '/'.join(reversed(names))
+            return vms
+        finally:
+            try:
+                if view is not None:
+                    self.soap('DestroyView', lambda op: xml(op, '_this', view.text, type='ContainerView'))
+            finally:
+                self.soap('Logout', lambda op: xml(op, '_this', manager, type='SessionManager'))
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
@@ -345,6 +508,16 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/_mock/'):
             if self.headers.get('Authorization') != AUTH:
                 return self.reply(401, {'error': 'Basic mock:mock authentication required'})
+            if path == '/_mock/inventory' and self.command in ('GET', 'POST'):
+                try:
+                    params = json.loads(body) if body else {}
+                    if not isinstance(params, dict) or not isinstance(params.get('seed_folders', False), bool):
+                        return self.reply(400, {'error': 'Expected a boolean seed_folders option'})
+                    inventory = SimulatorInventory()
+                    return self.reply(200, {'vms': inventory.vms(
+                        seed_folders=self.command == 'POST' and params.get('seed_folders', False))})
+                except (OSError, ValueError, ET.ParseError):
+                    return self.reply(502, {'error': 'Simulator VM inventory unavailable'})
             if path == '/_mock/scenario' and self.command == 'POST':
                 try:
                     STATE.set(json.loads(body)['scenario'])
@@ -381,6 +554,18 @@ class Handler(BaseHTTPRequestHandler):
             'vmware-api-session-id=' + SESSION in self.headers.get('Cookie', ''))
         if not authenticated:
             return self.reply(401, {'error': 'VMware API session required'})
+        if path.startswith(SimulatorInventory.prefix):
+            # Keep appliance-health sessions separate; tag data and assignments
+            # live in vcsim, rather than an invented gateway inventory.
+            try:
+                data = json.loads(body) if body else None
+                with SimulatorInventory() as inventory:
+                    result = inventory.rest(self.command, self.path, data)
+                return self.reply(200, result)
+            except urllib.error.HTTPError as error:
+                return self.reply(error.code, {'error': 'Simulator rejected tagging request'})
+            except (OSError, ValueError):
+                return self.reply(502, {'error': 'Simulator tagging API unavailable'})
         if path == '/rest/appliance/system/version':
             return self.reply(200, {'value': {'version': '8.0.3', 'product': 'VMware vCenter Server'}})
         if path in ('/api/appliance/health/system', '/rest/appliance/health/system'):

@@ -261,6 +261,15 @@ The demo gateway provides eight populated switch ports, including VM attachments
 modeled uplinks, VLANs and synthetic runtime/traffic counters. The opt-in template is
 required to collect and display switch data.
 
+VM discovery maps native vCenter folders to Zabbix host groups using the template macro
+`{$VMWARE.VM.FOLDER.GROUPS}` on **DEMO - VMware**. The default JSON value is
+`{"FB-STP":"STP","FB-MSP":"MSP","FB-OPS":"RUN"}`. Edit the macro in Zabbix to change
+the mapping; use `{$VMWARE.VM.FOLDER.GROUP.DEFAULT}` for unmatched folders. Both macros apply
+through normal discovery without rerunning setup. See the setup
+guide for nested folders, unmatched folders and group requirements.
+Nested paths use their main folder: `FB-MSP/05_app` maps through `FB-MSP`; the default
+`vm` root folder always uses the fallback macro.
+
 Run these commands from the module directory:
 
 ```powershell
