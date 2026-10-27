@@ -23,6 +23,50 @@ TEMPLATE_GROUP = 'Templates/VMware module demo'
 TEMPLATES = {name: 'DEMO - ' + name for name in ['VMware', 'VMware Hypervisor', 'VMware Guest']}
 NAMESPACE = uuid.UUID('ad21c28a-f39c-46f9-94c8-55454ef53110')
 MOCK_URL = 'http://vmware-module-mock:8080/sdk'
+TEAM_MACRO = '{#VM.TEAM}'
+TEAM_GROUP = HOST_GROUP + '/Team/' + TEAM_MACRO
+GROUP_MACRO = '{#VM.GROUP}'
+DEFAULT_TEAM_GROUPS = {'Linux': 'LXP'}
+TEAM_PREPROCESSING = '''// vmware-module-demo: vCenter Team tag
+var groupMap = JSON.parse(__TEAM_GROUP_MAP__);
+var payload = JSON.parse(value);
+var rows = Array.isArray(payload) ? payload : payload.data;
+if (!Array.isArray(rows)) {
+    throw 'Expected a VMware VM discovery array';
+}
+for (var i = 0; i < rows.length; i++) {
+    var names = [];
+    var tags = rows[i].tags || [];
+    for (var j = 0; j < tags.length; j++) {
+        if (tags[j].category === 'Team' && typeof tags[j].name === 'string') {
+            var name = tags[j].name.replace(/^\\s+|\\s+$/g, '');
+            if (name !== '') names.push(name);
+        }
+    }
+    names.sort();
+    rows[i].vm_team = names.length ? names[0] : 'Unassigned';
+    rows[i].vm_group = Object.prototype.hasOwnProperty.call(groupMap, rows[i].vm_team)
+        ? groupMap[rows[i].vm_team] : 'VMware module demo/Team/' + rows[i].vm_team;
+}
+return JSON.stringify(payload);'''
+VM_TAGS_KEY = 'vmware.vm.tags.get[{$VMWARE.URL},{$VMWARE.VM.UUID}]'
+
+
+def team_preprocessing(team_groups=None):
+    mapping = DEFAULT_TEAM_GROUPS if team_groups is None else team_groups
+    encoded = json.dumps(json.dumps(mapping, ensure_ascii=True, sort_keys=True), ensure_ascii=True)
+    return TEAM_PREPROCESSING.replace('__TEAM_GROUP_MAP__', encoded)
+
+
+def team_group_mapping(existing=None, arguments=()):
+    mapping = dict(DEFAULT_TEAM_GROUPS if existing is None else existing)
+    for argument in arguments:
+        team, separator, group = argument.partition('=')
+        team, group = team.strip(), group.strip()
+        if not separator or not team or not group or group.startswith('/') or group.endswith('/') or '//' in group:
+            raise ValueError('Team group mapping must be TEAM=GROUP with a valid nonempty group name.')
+        mapping[team] = group
+    return mapping
 
 
 class Zabbix:
@@ -66,6 +110,13 @@ def control(args, scenario=None):
     return json.load(urllib.request.urlopen(request, timeout=5))
 
 
+def simulator_tags(args, seed=False):
+    request = urllib.request.Request(args.mock_url.rstrip('/') + '/_mock/tags',
+        b'{}' if seed else None, {'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + base64.b64encode(b'mock:mock').decode()})
+    return json.load(urllib.request.urlopen(request, timeout=45))['vms']
+
+
 def state_for(api):
     state = json.loads(STATE.read_text()) if STATE.exists() else {'owner': OWNER, 'api': api.url}
     if state.get('owner') != OWNER or state.get('api') != api.url:
@@ -97,7 +148,7 @@ def objects(api):
     return (hosts[0] if hosts else None), templates, (proxies[0] if proxies else None)
 
 
-def clone_export(export):
+def clone_export(export, team_groups=None):
     """Clone the installed templates; preserve keys and discovery relationships."""
     def transform(value):
         if isinstance(value, dict):
@@ -135,6 +186,19 @@ def clone_export(export):
             if rule.get('host_prototypes'):
                 # The demo discovers all simulator VMs; production tag filters remain untouched.
                 rule.pop('overrides', None)
+            if rule['key'].startswith('vmware.vm.discovery['):
+                rule.setdefault('preprocessing', []).append(
+                    {'type': 'JAVASCRIPT', 'parameters': [team_preprocessing(team_groups)]})
+                paths = rule.setdefault('lld_macro_paths', [])
+                paths[:] = [p for p in paths if p['lld_macro'] not in (TEAM_MACRO, GROUP_MACRO)]
+                paths.append({'lld_macro': TEAM_MACRO, 'path': '$.vm_team'})
+                paths.append({'lld_macro': GROUP_MACRO, 'path': '$.vm_group'})
+                for path in paths:
+                    if path['lld_macro'] == '{#VM.TAGS}':
+                        path['path'] = '$.tags[*].name'
+                for prototype in rule.get('host_prototypes', []):
+                    prototype['tags'].append({'tag': 'Team', 'value': TEAM_MACRO})
+                    prototype['group_prototypes'] = [{'name': GROUP_MACRO}]
             for item in rule.get('item_prototypes', []):
                 if item.get('type') != 'DEPENDENT':
                     item['delay'] = '15s'
@@ -142,6 +206,48 @@ def clone_export(export):
             if item.get('type') != 'DEPENDENT':
                 item['delay'] = '15s'
     return cloned
+
+
+def configure_vm_tags(api, templates, team_groups=None):
+    """Migrate only the owned demo rules/prototypes, preserving other settings."""
+    templateid = next(t['templateid'] for t in templates if t['host'] == TEMPLATES['VMware'])
+    rules = api.call('discoveryrule.get', {'output': ['itemid', 'key_'], 'hostids': [templateid],
+        'selectLLDMacroPaths': 'extend', 'selectPreprocessing': 'extend'})
+    rule = next(r for r in rules if r['key_'].startswith('vmware.vm.discovery['))
+    prototypes = api.call('hostprototype.get', {'output': ['hostid', 'host'],
+        'discoveryids': [rule['itemid']], 'selectTags': 'extend', 'selectGroupPrototypes': 'extend'})
+    for prototype in prototypes:
+        if not prototype['host'].startswith(HOST + '-vm-') or (
+                {'tag': 'fixture', 'value': OWNER} not in prototype['tags']):
+            raise RuntimeError('VM prototype is not owned by the demo; refusing to modify it.')
+    steps = [step for step in rule['preprocessing']
+             if not step['params'].startswith('// vmware-module-demo: vCenter Team tag')]
+    steps.append({'type': 21, 'params': team_preprocessing(team_groups), 'error_handler': 0, 'error_handler_params': ''})
+    paths = [p for p in rule['lld_macro_paths'] if p['lld_macro'] not in (TEAM_MACRO, GROUP_MACRO)]
+    paths.append({'lld_macro': TEAM_MACRO, 'path': '$.vm_team'})
+    paths.append({'lld_macro': GROUP_MACRO, 'path': '$.vm_group'})
+    for path in paths:
+        if path['lld_macro'] == '{#VM.TAGS}':
+            path['path'] = '$.tags[*].name'
+    api.call('discoveryrule.update', {'itemid': rule['itemid'], 'preprocessing': steps,
+                                    'lld_macro_paths': paths})
+    for prototype in prototypes:
+        tags = [t for t in prototype['tags'] if t['tag'] != 'Team']
+        tags.append({'tag': 'Team', 'value': TEAM_MACRO})
+        groups = [{'group_prototypeid': g['group_prototypeid'], 'name': g['name']}
+                  for g in prototype['groupPrototypes']]
+        for group in groups:
+            if group['name'] == TEAM_GROUP:
+                group['name'] = GROUP_MACRO
+        if not any(g['name'] == GROUP_MACRO for g in groups):
+            groups.append({'name': GROUP_MACRO})
+        api.call('hostprototype.update', {'hostid': prototype['hostid'], 'tags': tags, 'groupPrototypes': groups})
+    guestid = next(t['templateid'] for t in templates if t['host'] == TEMPLATES['VMware Guest'])
+    if not api.call('item.get', {'output': ['itemid'], 'hostids': [guestid], 'filter': {'key_': VM_TAGS_KEY}}):
+        api.call('item.create', {'hostid': guestid, 'name': 'VMware tags', 'key_': VM_TAGS_KEY,
+            'type': 3, 'value_type': 4, 'delay': '15s', 'history': '7d',
+            'username': '{$VMWARE.USERNAME}', 'password': '{$VMWARE.PASSWORD}',
+            'description': 'Native vCenter tags, including their categories. Team is also mapped to a host tag and group.'})
 
 
 def ensure_group(api, state, kind, name):
@@ -157,6 +263,13 @@ def ensure_group(api, state, kind, name):
 def install(api, args):
     state = state_for(api)
     host, templates, proxy = objects(api)
+    team_groups = team_group_mapping(state.get('team_groups'), getattr(args, 'team_group', None) or [])
+    conflicts = api.call('hostgroup.get', {'output': ['name', 'flags'],
+        'filter': {'name': list(team_groups.values())}}) if team_groups else []
+    if any(group['flags'] == '0' for group in conflicts):
+        raise RuntimeError('Mapped groups already exist as manual groups. Zabbix 7.0 group prototypes can only '
+                           'reuse discovered groups; choose a new/discovered group name: '
+                           + ', '.join(g['name'] for g in conflicts if g['flags'] == '0'))
     if templates and len(templates) != 3:
         raise RuntimeError('Partial template fixture found. Run down before retrying up.')
     groupid = ensure_group(api, state, 'hostgroup', HOST_GROUP)
@@ -170,7 +283,7 @@ def install(api, args):
         rules = {kind: {'createMissing': True, 'updateExisting': False} for kind in
             ['host_groups', 'template_groups', 'templates', 'items', 'discoveryRules', 'triggers', 'graphs', 'valueMaps']}
         rules['templateLinkage'] = {'createMissing': True}
-        api.call('configuration.import', {'format': 'json', 'source': json.dumps(clone_export(exported)), 'rules': rules})
+        api.call('configuration.import', {'format': 'json', 'source': json.dumps(clone_export(exported, team_groups)), 'rules': rules})
         host, templates, proxy = objects(api)
     if not proxy:
         proxyid = api.call('proxy.create', {'name': PROXY, 'operating_mode': 0,
@@ -213,6 +326,14 @@ def install(api, args):
             if attempt == 29:
                 raise RuntimeError('Mock gateway did not become ready.')
             time.sleep(1)
+    vms = simulator_tags(args, seed=True)
+    if not vms or any(not any(t['category'] == 'Team' for t in vm['tags']) for vm in vms):
+        raise RuntimeError('Simulator VMs are missing their native Team tags.')
+    configure_vm_tags(api, templates, team_groups)
+    state['team_groups'] = team_groups
+    save(state)
+    print('Team to host group mapping:', json.dumps(team_groups))
+    print('Native simulator Team tags:', json.dumps(vms))
     print('Demo installed. Allow 2-5 minutes for proxy configuration, SOAP collection and discovery.')
     print(args.zabbix_url.rstrip('/') + '/zabbix.php?action=vmware.monitoring.view&force_vcenter_refresh=1&filter_set=1&filter_hostid[0]=' + state['hostid'])
 
@@ -230,6 +351,14 @@ def status(api, args):
         print('vCenter items:', len(items), '| With samples:', sum(int(i['lastclock']) > 0 for i in items))
         children = api.call('host.get', {'output': ['hostid', 'name'], 'tags': [{'tag': 'fixture', 'value': OWNER}]})
         print('Fixture hosts:', len(children))
+        print('Native simulator VM tags:', json.dumps(simulator_tags(args)))
+        vm_hosts = api.call('host.get', {'output': ['hostid', 'host', 'name'],
+            'tags': [{'tag': 'fixture', 'value': OWNER}], 'selectTags': 'extend',
+            'selectHostGroups': ['name']})
+        for vm in vm_hosts:
+            if vm['host'].startswith(HOST + '-vm-'):
+                print(' ', vm['name'], '| Team:', ', '.join(t['value'] for t in vm['tags'] if t['tag'] == 'Team'),
+                    '| Groups:', ', '.join(g['name'] for g in vm['hostgroups']))
         for item in [i for i in items + rules if i.get('state') == '1'][:12]:
             print(' ', item['key_'] + ': ' + item['error'])
 
@@ -277,6 +406,8 @@ def main():
     parser.add_argument('--zabbix-url', default=os.getenv('ZABBIX_URL', 'http://127.0.0.1'))
     parser.add_argument('--user', default=os.getenv('ZABBIX_USER', 'Admin'))
     parser.add_argument('--mock-url', default='http://127.0.0.1:18989')
+    parser.add_argument('--team-group', action='append', metavar='TEAM=GROUP',
+        help='Map a vCenter Team value to a discovered group name; repeat for multiple teams. Saved for later up runs.')
     args = parser.parse_args()
     if args.command == 'scenario':
         print(json.dumps(control(args, args.scenario)))
