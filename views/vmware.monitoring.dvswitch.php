@@ -5,9 +5,8 @@ use Modules\VMwareMonitoring\Includes\VMwareDvswitch;
 use Modules\VMwareMonitoring\Includes\VMwareDvswitchRenderer as R;
 use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 
-$this->addJsFile('items.js');
-$this->addJsFile('multilineinput.js');
-$this->addJsFile('class.tagfilteritem.js');
+\Modules\VMwareMonitoring\Includes\Common\ItemActions::init($this);
+
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 $this->includeJsFile('vmware.monitoring.dvswitch.js.php');
 $switch = $data['switch'];

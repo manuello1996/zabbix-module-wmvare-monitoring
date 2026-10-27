@@ -7,24 +7,6 @@
 	const sensorsLabel = <?= json_encode(_('Sensors')) ?>;
 	const viewLabel = <?= json_encode(_('View')) ?>;
 	let activeObserver = null;
-	if (typeof getMenuPopupItem === 'function') {
-		const nativeItemMenu = getMenuPopupItem;
-		window.getMenuPopupItem = options => {
-			const sections = nativeItemMenu(options);
-			const action = new URLSearchParams((options.backurl || '').split('?')[1]).get('action');
-			if (!['vmware.monitoring.list', 'vmware.monitoring.view', 'vmware.monitoring.hypervisor',
-					'vmware.monitoring.cluster', 'vmware.monitoring.dvswitch'].includes(action)) return sections;
-			const allowed = new Set([t('Item'), t('Graph'), t('Values'), t('500 latest values')]);
-			return sections.map(section => ({...section, items: section.items.filter(item =>
-				allowed.has(item.label) && (item.label !== t('Graph') || options.showGraph))}))
-				.filter(section => section.items.length)
-				.sort((a, b) => Number(b.items.some(item => item.label === t('Item')))
-					- Number(a.items.some(item => item.label === t('Item'))));
-		};
-	}
-	const hostView = typeof view === 'object' && view !== null
-		? view
-		: (window.view = {});
 	const refreshAfterEdit = event => {
 		const response = event.detail ?? {};
 
@@ -33,6 +15,7 @@
 				clearMessages();
 				addMessage(makeMessageBox('good', response.success.messages ?? [], response.success.title));
 			}
+			window.vmware_monitoring.tabCache?.clear();
 			window.vmware_monitoring.loadTab(window.vmware_monitoring.activeTab);
 		}
 		else {
@@ -46,59 +29,7 @@
 		}
 	};
 
-	if (typeof hostView.editHost !== 'function') {
-		hostView.editHost = hostid => {
-			const originalUrl = location.href;
-			const overlay = PopUp('popup.host.edit', {hostid: String(hostid)}, {
-				dialogueid: 'host_edit',
-				dialogue_class: 'modal-popup-large',
-				prevent_navigation: true
-			});
-			const dialogue = overlay.$dialogue?.[0];
-
-			if (dialogue === undefined) {
-				return;
-			}
-
-			dialogue.addEventListener('dialogue.submit', refreshAfterEdit, {once: true});
-			dialogue.addEventListener('dialogue.close', () => {
-				history.replaceState({}, '', originalUrl);
-			}, {once: true});
-		};
-	}
-
-	if (typeof hostView.editTrigger !== 'function') {
-		hostView.editTrigger = triggerData => {
-			clearMessages();
-			const overlay = PopUp('trigger.edit', triggerData, {
-				dialogueid: 'trigger-edit',
-				dialogue_class: 'modal-popup-large',
-				prevent_navigation: true
-			});
-			overlay.$dialogue?.[0]?.addEventListener('dialogue.submit', refreshAfterEdit, {once: true});
-		};
-	}
-
-	if (typeof hostView.editItem !== 'function') {
-		hostView.editItem = (target, itemData) => {
-			const originalUrl = location.href;
-			clearMessages();
-			const overlay = PopUp('item.edit', itemData, {
-				dialogueid: 'item-edit',
-				dialogue_class: 'modal-popup-large',
-				trigger_element: target,
-				prevent_navigation: true
-			});
-			const dialogue = overlay.$dialogue?.[0];
-			const restore = () => history.replaceState({}, '', originalUrl);
-			dialogue?.addEventListener('dialogue.close', restore, {once: true});
-			dialogue?.addEventListener('dialogue.submit', event => {
-				restore();
-				window.vmware_monitoring?.tabCache?.clear();
-				refreshAfterEdit(event);
-			}, {once: true});
-		};
-	}
+	VMwareCommon.ItemActions.install({onSuccess: refreshAfterEdit});
 
 	const prepareSensorsEntry = event => {
 		if (event.type === 'keydown' && event.key !== 'Enter') {

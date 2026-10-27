@@ -37,6 +37,16 @@ html[theme="dark-theme"], html[theme="hc-dark"] {
 .vmware-monitoring-card-stopped .vmware-monitoring-card-value,
 .vmware-monitoring-card-unhealthy .vmware-monitoring-card-value { color: var(--vmware-monitoring-ui-critical); }
 
+/* Detail pages use independent cards so figures and units cannot be squeezed by charts. */
+.vmware-monitoring-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 14px; margin: 0 0 16px; }
+.vmware-monitoring-summary-grid > .vmware-monitoring-statseg { min-width: 0; padding: 16px 18px; border: 1px solid var(--vmware-monitoring-ui-border); border-radius: 8px; background: var(--vmware-monitoring-ui-bg); }
+.vmware-monitoring-summary-grid .vmware-monitoring-statseg-figure { flex-wrap: wrap; align-items: center; gap: 10px; }
+.vmware-monitoring-summary-grid .vmware-monitoring-card-value { white-space: nowrap; font-size: 24px; line-height: 1.4; }
+.vmware-monitoring-summary-grid .vmware-monitoring-statseg-aside { flex: 0 0 100%; min-width: 0; margin: 0; }
+.vmware-monitoring-summary-grid .vmware-monitoring-statseg-aside > a { display: block; }
+.vmware-monitoring-summary-grid .vmware-monitoring-sparkline, .vmware-monitoring-summary-grid .vmware-monitoring-progress { width: 100%; }
+.vmware-monitoring-statseg-footer { margin-top: 10px; color: var(--vmware-monitoring-ui-muted); font-size: 12px; overflow-wrap: anywhere; }
+
 .vmware-monitoring-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; min-height: 22px; margin: 0; padding: 0; font-size: 13px; line-height: 22px; color: var(--vmware-monitoring-ui-text); }
 .vmware-monitoring-breadcrumb a { color: var(--vmware-monitoring-ui-muted); }
 .vmware-monitoring-breadcrumb a:hover { color: var(--vmware-monitoring-ui-accent); text-decoration: underline; }

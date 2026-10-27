@@ -16,7 +16,8 @@ class Summary {
 		}
 		$card = (new \CDiv([
 			(new \CDiv($label))->addClass('vmware-monitoring-statseg-label'),
-			(new \CDiv($content))->addClass('vmware-monitoring-statseg-figure')
+			(new \CDiv($content))->addClass('vmware-monitoring-statseg-figure'),
+			isset($options['footer']) ? (new \CDiv($options['footer']))->addClass('vmware-monitoring-statseg-footer') : null
 		]))->addClass('vmware-monitoring-statseg')->addClass('vmware-monitoring-card-'.($options['modifier'] ?? 'total'));
 		foreach ($options['attributes'] ?? [] as $name => $value) { $card->setAttribute($name, $value); }
 		return $card;
@@ -26,5 +27,12 @@ class Summary {
 		$strip = (new \CDiv($cards))->addClass('vmware-monitoring-statstrip');
 		foreach ($attributes as $name => $value) { $strip->setAttribute($name, $value); }
 		return $strip;
+	}
+
+	/** Independent cards for detail-page health metrics, without a wrapping strip. */
+	public static function grid(array $cards, array $attributes = []): \CDiv {
+		$grid = (new \CDiv($cards))->addClass('vmware-monitoring-summary-grid');
+		foreach ($attributes as $name => $value) { $grid->setAttribute($name, $value); }
+		return $grid;
 	}
 }

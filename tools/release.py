@@ -38,8 +38,8 @@ GENERATED = {
     "tools/release.py": "tools/release.py",
     "tools/release.ps1": "release.ps1",
 }
-RUNTIME_DIRS = {"actions", "assets", "includes", "views", "templates", "agent2", "img"}
-RUNTIME_FILES = {"manifest.json", "Module.php", "README.md", "common.lock.json", "LICENSE", "COPYING"}
+RUNTIME_DIRS = {"actions", "assets", "includes", "services", "views", "templates", "agent2", "img"}
+RUNTIME_FILES = {"manifest.json", "Module.php", "Widget.php", "README.md", "common.lock.json", "LICENSE", "COPYING"}
 DEVELOPMENT_PARTS = {"dev", "test", "tests", "mock", "mocks", "fixtures", "__pycache__", "node_modules",
                      ".git", ".github", ".idea", ".vscode", ".tools", "dist"}
 
@@ -142,7 +142,8 @@ def verify_bundle(root):
 
 
 def validate_module(root, manifest):
-    needed = ["Module.php", *(name for name in GENERATED.values() if name.startswith(("includes/", "assets/")))]
+    entrypoint = "Widget.php" if manifest.get("type") == "widget" else "Module.php"
+    needed = [entrypoint, *(name for name in GENERATED.values() if name.startswith(("includes/", "assets/")))]
     for kind in ["css", "js"]:
         needed.extend(f"assets/{kind}/{name}" for name in manifest.get("assets", {}).get(kind, []))
     for action in manifest.get("actions", {}).values():
@@ -179,7 +180,8 @@ def package(root, manifest):
             target = safe_path(root, name)
             if target.is_file():
                 files.append((name, target))
-    for name in ["manifest.json", "Module.php", "common.lock.json",
+    entrypoint = "Widget.php" if manifest.get("type") == "widget" else "Module.php"
+    for name in ["manifest.json", entrypoint, "common.lock.json",
                  *(name for name in GENERATED.values() if name.startswith(("includes/", "assets/")))]:
         if name not in {relative for relative, _ in files}:
             raise ReleaseError(f"Required runtime file is ignored or absent: {name}")

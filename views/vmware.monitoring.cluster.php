@@ -9,9 +9,8 @@ use Modules\VMwareMonitoring\Includes\VMwareItemMenu as I;
 
 require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
-$this->addJsFile('items.js');
-$this->addJsFile('multilineinput.js');
-$this->addJsFile('class.tagfilteritem.js');
+\Modules\VMwareMonitoring\Includes\Common\ItemActions::init($this);
+
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
 $cluster = $data['cluster'];

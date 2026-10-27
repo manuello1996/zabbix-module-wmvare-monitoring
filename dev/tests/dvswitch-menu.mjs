@@ -23,7 +23,7 @@ class Curl {
 }
 const context = {
 	URLSearchParams, Curl, t: value => value,
-	document: {addEventListener() {}}, location: {href: pageUrl, reload() { reloads++; }},
+	document: {querySelectorAll() { return [{getAttribute() { return JSON.stringify({type: 'item', data: {itemid: '53977', backurl: pageUrl}}); }}]; }, addEventListener() {}}, location: {href: pageUrl, reload() { reloads++; }},
 	history: {replaceState(_state, _title, url) { restored = url; }},
 	clearMessages() {}, postMessageOk() {}, postMessageDetails() {},
 	PopUp(action, data, options) {
@@ -34,6 +34,7 @@ const context = {
 context.window = context;
 vm.createContext(context);
 vm.runInContext(native.slice(start, end), context);
+for (const file of ['common.js', 'components.js']) vm.runInContext(readFileSync(new URL('../../assets/js/' + file, import.meta.url), 'utf8'), context);
 vm.runInContext(adapter, context);
 for (const method of ['editHost', 'editItem', 'editTrigger']) {
 	assert.equal(typeof context.view[method], 'function', `${method} is available on switch pages`);
@@ -44,14 +45,15 @@ const options = {itemid: '53977', hostid: '10735', name: 'Get ports', context: '
 	triggers: [], isExecutable: true};
 const entries = opts => context.getMenuPopupItem(opts).flatMap(section => section.items);
 const menu = entries(options);
-assert.equal(menu.map(item => item.label).join('|'), 'Item|Values|500 latest values');
-assert.equal(entries({...options, showGraph: true}).map(item => item.label).join('|'), 'Item|Graph|Values|500 latest values');
-assert.equal(entries({...options, isWriteable: false}).map(item => item.label).join('|'), 'Values|500 latest values');
+assert.equal(menu.map(item => item.label).join('|'), 'Latest data|Graph|Values|500 latest values|Item|Host|Triggers|Execute now');
+assert.equal(menu.find(item => item.label === 'Graph').disabled, true);
+assert.equal(entries({...options, showGraph: true}).find(item => item.label === 'Graph').disabled, false);
+assert.equal(entries({...options, isWriteable: false, allowed_ui_conf_hosts: false}).some(item => item.label === 'Item'), false);
 for (const entry of menu.filter(item => item.url)) {
 	assert.equal(new URL(entry.url, pageUrl).origin, 'http://127.0.0.1');
 	assert.equal(new URL(entry.url, pageUrl).protocol, 'http:');
 }
-menu[0].clickCallback();
+menu.find(item => item.label === 'Item').clickCallback();
 assert.equal(calls.at(-1).action, 'item.edit');
 assert.equal(calls.at(-1).data.itemid, '53977');
 handlers['dialogue.close']();

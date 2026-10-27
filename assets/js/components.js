@@ -1,5 +1,111 @@
 /* Shared component behavior. Fetching, permissions and domain sorting remain with callers. */
 (() => {
+	// Zabbix fetches item access and role permissions when its native menu opens.
+	// Apply the common visibility policy after Zabbix has built its native menu.
+	const itemActionOptions = {};
+	const itemMenuPolicy = Symbol.for('zabbix-module-common.item-actions');
+	const ItemActions = {
+		install(options = {}) {
+			Object.assign(itemActionOptions, options);
+			this.installMenuPolicy();
+			const page = typeof view === 'object' && view !== null ? view : (window.view ??= {});
+			const defaults = {
+				editItem: (target, data) => this.open('item.edit', data, 'item-edit', target),
+				editHost: hostid => this.open('popup.host.edit', {hostid: String(hostid)}, 'host_edit'),
+				editTrigger: data => this.open('trigger.edit', data, 'trigger-edit'),
+				executeNow: (target, data) => this.executeNow(target, data)
+			};
+			for (const [name, handler] of Object.entries(defaults)) {
+				if (typeof page[name] !== 'function') page[name] = handler;
+			}
+			return page;
+		},
+		installMenuPolicy() {
+			if (typeof getMenuPopupItem !== 'function' || getMenuPopupItem[itemMenuPolicy]) return;
+			const nativeItemMenu = getMenuPopupItem;
+			const menu = function(options) {
+				const sections = nativeItemMenu.apply(this, arguments);
+				const shared = [...document.querySelectorAll('[data-module-item-actions]')].some(element => {
+					try {
+						const popup = JSON.parse(element.getAttribute('data-menu-popup'));
+						return popup?.type === 'item' && String(popup.data?.itemid) === String(options.itemid)
+							&& popup.data?.backurl === options.backurl;
+					}
+					catch (_error) { return false; }
+				});
+				if (!shared) return sections;
+				const hidden = new Set(['Create trigger', 'Create dependent item', 'Create dependent discovery rule']
+					.map(label => typeof t === 'function' ? t(label) : label));
+				return sections.map(section => ({...section,
+					items: section.items.filter(item => !hidden.has(item.label))})).filter(section => section.items.length);
+			};
+			Object.defineProperty(menu, itemMenuPolicy, {value: true});
+			window.getMenuPopupItem = menu;
+		},
+		open(action, data, dialogueid, target = null) {
+			const originalUrl = window.location.href;
+			if (typeof clearMessages === 'function') clearMessages();
+			const overlay = PopUp(action, data, {dialogueid, dialogue_class: 'modal-popup-large',
+				trigger_element: target, prevent_navigation: true});
+			const dialogue = overlay?.$dialogue?.[0];
+			if (!dialogue) return;
+			const restore = () => window.history.replaceState(null, '', originalUrl);
+			dialogue.addEventListener('dialogue.close', restore, {once: true});
+			dialogue.addEventListener('dialogue.submit', event => {
+				restore();
+				if (typeof itemActionOptions.onSuccess === 'function') {
+					itemActionOptions.onSuccess(event);
+					return;
+				}
+				const success = event.detail?.success;
+				if (success && typeof postMessageOk === 'function') {
+					postMessageOk(success.title);
+					if (success.messages && typeof postMessageDetails === 'function') {
+						postMessageDetails('success', success.messages);
+					}
+				}
+				window.location.reload();
+			}, {once: true});
+			return overlay;
+		},
+		async executeNow(target, data) {
+			target?.classList?.add('is-loading');
+			try {
+				if (!itemActionOptions.csrfToken) throw new Error('Missing item CSRF token');
+				const response = await fetch('zabbix.php?action=item.execute', {
+					method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({...data, [CSRF_TOKEN_NAME]: itemActionOptions.csrfToken})
+				});
+				if (!response.ok) throw new Error('Item execution request failed');
+				const result = await response.json();
+				if (!result.success && !result.error) throw new Error('Invalid item execution response');
+				this.message(result);
+				return result;
+			}
+			catch (_error) {
+				this.message({error: {title: itemActionOptions.errorTitle || 'Unexpected server error.'}});
+			}
+			finally { target?.classList?.remove('is-loading'); }
+		},
+		message(result) {
+			if (typeof clearMessages !== 'function' || typeof makeMessageBox !== 'function'
+					|| typeof addMessage !== 'function') return;
+			const error = Boolean(result.error), message = result.error || result.success;
+			clearMessages();
+			addMessage(makeMessageBox(error ? 'bad' : 'good', message.messages || [], message.title, true, true));
+		},
+		// For values rendered by a dashboard widget rather than a PHP view.
+		html(label, itemid, {backurl = window.location.href, className = ''} = {}) {
+			const escape = value => String(value ?? '').replace(/[&<>"']/g,
+				char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+			if (!/^[0-9]+$/.test(String(itemid ?? '')) || !/[1-9]/.test(String(itemid))) return escape(label);
+			const menu = {type: 'item', data: {itemid: String(itemid), backurl}, context: 'host'};
+			return `<a class="link-action ${escape(className)}" tabindex="0" role="button" aria-haspopup="true"`
+				+ ` aria-expanded="false" title="${escape(itemActionOptions.title || 'Item actions')}"`
+				+ ` data-module-item-actions="1" data-menu-popup="${escape(JSON.stringify(menu))}">${escape(label)}</a>`;
+		}
+	};
+
 	const SortableHeader = {
 		key(event, activate) {
 			if (event.isComposing || !['Enter', ' '].includes(event.key)) return false;
@@ -245,5 +351,5 @@
 		}
 	}
 
-	Object.assign(window.VMwareCommon, {SortableHeader, Pager, ProblemBadges, Sparkline, RowDetails, AutoRefresh});
+	Object.assign(window.VMwareCommon, {ItemActions, SortableHeader, Pager, ProblemBadges, Sparkline, RowDetails, AutoRefresh});
 })();

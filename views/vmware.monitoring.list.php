@@ -6,9 +6,8 @@ use Modules\VMwareMonitoring\Includes\VMwareBreadcrumb;
 
 require_once dirname(__DIR__).'/includes/common/bootstrap.php';
 
-$this->addJsFile('items.js');
-$this->addJsFile('multilineinput.js');
-$this->addJsFile('class.tagfilteritem.js');
+\Modules\VMwareMonitoring\Includes\Common\ItemActions::init($this);
+
 $this->includeJsFile('vmware.monitoring.list.js.php');
 $this->includeJsFile('vmware.monitoring.hostmenu.js.php');
 
